@@ -76,22 +76,29 @@ nasce como baseline simples (inclinação de janela móvel, z-score/MAD) para se
 via backtesting antes de qualquer versão baseada em GPR — para poder aplicar de fato o princípio
 "não considerar um modelo melhor só por ser mais complexo".
 
-### Períodos/ciclos (bulking, cutting, manutenção)
+### Períodos/ciclos (bulking, cutting, manutenção) — implementado em 2026-09-23
 
-Decidido em 2026-09-23, ainda não implementado — mas recomendado entrar na camada de dados antes
-de aprofundar o dashboard (item 2 da spec), porque é barato agora e caro de retrofitar depois.
-
-- Nova entidade `Period`: intervalo de datas (início; fim opcional = período em andamento),
-  direção do objetivo (ganho/perda/manutenção — campo livre, não travado em jargão de
-  bodybuilding), rótulo, meta específica do período (opcional, pode sobrepor a meta global).
-- **Opcional por design**: o app continua funcionando sem nenhum período definido (spec item 32).
-  Associação de `WeightEntry` a um período é por intervalo de data na hora da consulta, não por FK
-  em cada registro — permite editar limites de um período sem tocar nos registros. Entradas fora
-  de qualquer período definido caem num "sem período" implícito.
-- Períodos não devem se sobrepor (validação na criação/edição).
-- Toda análise (dashboard, tendência, forecasting) deve poder ser escopada por período específico
-  OU pela história inteira — trend de um histórico que atravessa cutting→bulking→cutting não faz
-  sentido calculado como uma curva só.
+- `src/w8t/data/models.py`: `Period` (label livre, `goal_direction` — enum controlado
+  `loss`/`gain`/`maintenance`, `start_date`, `end_date` opcional = em andamento,
+  `target_weight_kg` opcional). Sem overlap constraint no schema (SQLite não tem exclusion
+  constraint) — validado em `src/w8t/data/periods.py`.
+- `src/w8t/data/periods.py`: `create_period`/`update_period`/`delete_period`/`list_periods`/
+  `get_period`/`get_period_for_date`. Overlap (incluindo período em andamento tratado como
+  data-fim infinita) levanta `OverlappingPeriodError`; `update_period` exclui o próprio período
+  da checagem e usa sentinela (`...`) para distinguir "não passei esse campo" de "quero setar
+  `end_date=None`" (reabrir um período).
+  Associação de `WeightEntry` a um período continua sendo por intervalo de data na consulta
+  (`get_period_for_date`), não por FK — período pode ser editado sem tocar nos registros.
+- Migração `86da55a7e986` cria a tabela `periods`.
+- `src/w8t/app/pages/2_Periodos.py`: formulário de criação (com toggle "em andamento" e meta
+  opcional), listagem, edição e exclusão — mesmo padrão da tela de registro.
+- Testes: `tests/test_periods.py` (overlap, período em andamento bloqueando qualquer início
+  posterior, update reabrindo período, `get_period_for_date`) e `tests/test_periodos_page.py`
+  (AppTest, incluindo o caso de sobreposição rejeitada na UI).
+- **Opcional por design**: app continua funcionando sem nenhum período definido (spec item 32) —
+  coberto pelo teste `test_page_loads_with_no_periods`.
+- **Ainda não feito**: nenhuma tela hoje *usa* `get_period_for_date` para escopar análises —
+  isso só faz sentido a partir do dashboard (próximo passo).
 
 ### Reconstrução de gaps (Kalman + GPR)
 
@@ -151,8 +158,9 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **item 1 da spec concluído** (registro diário de peso). Repo público em
-`github.com/giovaniolivr/w8t`.
+Fase: **item 1 da spec concluído** (registro diário de peso) **+ `Period` no data layer**
+(entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos" acima). Repo
+público em `github.com/giovaniolivr/w8t`.
 
 Feito:
 - Repo git inicializado, identidade de commit configurada (`Giovaniolivr@gmail.com`), remoto no
@@ -177,6 +185,9 @@ Feito:
   - Testes: `tests/test_repository.py` (CRUD, duplicata, retroativo) e
     `tests/test_registro_de_peso_page.py` (via `streamlit.testing.v1.AppTest` — carrega a página
     de verdade e simula preencher/enviar o formulário, sem navegador).
+- **`Period` (períodos/ciclos) — completo**, ver seção "Períodos/ciclos" acima para detalhes de
+  arquivo. Migração `86da55a7e986`. Ainda não consumido por nenhuma análise (não há análise além
+  do CRUD ainda).
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
@@ -187,14 +198,12 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): **modelar `Period`** (ver seção "Períodos/ciclos" acima) na camada de
-dados antes/junto do dashboard — é a única peça nova que vale antecipar por ser mais barata agora
-do que depois. Em seguida, dashboard principal (spec item 2) — médias móveis, peso
-atual/inicial/mín/máx, variação, ritmo, com opção de escopo por período ou histórico inteiro. A
-lógica de cálculo deve nascer em `core/` (stats engine, determinístico, sem ML) com testes próprios
-antes de virar tela.
+Próximo passo (não iniciado): dashboard principal (spec item 2) — médias móveis, peso
+atual/inicial/mín/máx, variação, ritmo, com opção de escopo por período (usando
+`periods.get_period_for_date`) ou histórico inteiro. A lógica de cálculo deve nascer em `core/`
+(stats engine, determinístico, sem ML) com testes próprios antes de virar tela.
 
-Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23): `Period` no data layer →
+Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period` já feito) →
 dashboard (item 2) → tendência/platô/anomalia com baselines simples (itens 8-10) → forecasting
 engine com Kalman/GPR (itens 6, 11-14) → backtesting (item 15) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
