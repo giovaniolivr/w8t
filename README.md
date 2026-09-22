@@ -26,7 +26,17 @@ Configurado via `.env` (copie `.env.example`). Dados reais nunca são expostos n
 
 ```bash
 uv sync --extra postgres --extra insights   # ou só `uv sync` se não precisar dessas extras
+uv run alembic upgrade head                 # cria/atualiza o schema do banco configurado em .env
 uv run streamlit run src/w8t/app/Home.py
+```
+
+## Migrações
+
+Schema versionado com Alembic, alvo determinado por `DATABASE_URL`/`APP_ENV` (ver `alembic/env.py`).
+
+```bash
+uv run alembic revision --autogenerate -m "descricao da mudanca"
+uv run alembic upgrade head
 ```
 
 ## Testes
@@ -44,5 +54,6 @@ src/w8t/
   forecasting/   # modelos de previsão plugáveis (estatísticos/ML) + backtesting
   data/          # modelos SQLAlchemy, sessão de banco, repositórios
   insights/      # camada opcional de narrativa via IA generativa (Claude API)
+alembic/         # migrações de schema
 tests/
 ```

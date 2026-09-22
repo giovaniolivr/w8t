@@ -86,21 +86,46 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **esqueleto inicial**. Nenhuma feature da spec foi implementada ainda.
+Fase: **item 1 da spec concluído** (registro diário de peso). Repo público em
+`github.com/giovaniolivr/w8t`.
 
 Feito:
-- Repo git inicializado, identidade de commit configurada.
+- Repo git inicializado, identidade de commit configurada (`Giovaniolivr@gmail.com`), remoto no
+  GitHub (`giovaniolivr/w8t`, público) com push funcionando via GitHub CLI autenticado localmente.
 - Estrutura de pastas (`src/w8t/{app,core,data,forecasting,insights}`, `tests/`).
 - `pyproject.toml` com dependências via `uv` (grupo dev: pytest/ruff; extras: `postgres`,
   `insights`).
 - `src/w8t/config.py`: settings via `pydantic-settings`, modo `local`/`demo`, `.env.example`.
-- Entrypoint Streamlit mínimo (`src/w8t/app/Home.py`) só provando que a stack sobe.
-- Smoke test (`tests/test_config.py`).
+- Entrypoint Streamlit mínimo (`src/w8t/app/Home.py`).
+- **Registro diário de peso (spec item 1) — completo:**
+  - `src/w8t/data/models.py`: `WeightEntry` (data, peso, horário opcional, unique constraint por
+    `entry_date` — um registro por dia).
+  - `src/w8t/data/db.py`: engine/sessão SQLAlchemy (`get_session()` context manager).
+  - `src/w8t/data/repository.py`: `create_entry`/`update_entry`/`delete_entry`/`list_entries`/
+    `get_entry_by_date`; duplicata na mesma data levanta `DuplicateEntryError` (a UI trata isso
+    oferecendo sobrescrever em vez de deixar o usuário criar um segundo registro no mesmo dia).
+  - Alembic configurado (`alembic/`, `env.py` lê `DATABASE_URL` de `w8t.config.settings`
+    dinamicamente); primeira migração `409e08cf7c09` cria `weight_entries`.
+  - `src/w8t/app/pages/1_Registro_de_Peso.py`: formulário de novo registro (permite data
+    retroativa, bloqueia data futura), alerta + opção de sobrescrever em caso de duplicata,
+    histórico com diferença vs. registro anterior, edição e exclusão inline.
+  - Testes: `tests/test_repository.py` (CRUD, duplicata, retroativo) e
+    `tests/test_registro_de_peso_page.py` (via `streamlit.testing.v1.AppTest` — carrega a página
+    de verdade e simula preencher/enviar o formulário, sem navegador).
 
-Próximo passo (não iniciado): implementar o registro diário de peso (item 1 da spec) — modelo
-SQLAlchemy de `WeightEntry`, repositório em `data/`, e a primeira tela de CRUD no Streamlit.
-Depois disso, dashboard principal (item 2) só faz sentido quando já houver dado para calcular em
-cima.
+Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
+singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
+`w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
+a troca chega tarde demais e o teste acaba usando o banco local real. A correção em
+`test_registro_de_peso_page.py` faz `monkeypatch.setattr` direto em `w8t.data.db.engine` e
+`w8t.data.db.SessionLocal` (que `get_session()` sempre relê no momento da chamada), em vez de mexer
+em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
+padrão.
+
+Próximo passo (não iniciado): dashboard principal (spec item 2) — médias móveis, peso
+atual/inicial/mín/máx, variação, ritmo. Depende só do que já existe em `data/repository.py`; a
+lógica de cálculo deve nascer em `core/` (stats engine, determinístico, sem ML) com testes
+próprios antes de virar tela.
 
 ## Convenções de trabalho
 

@@ -30,9 +30,13 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.ruff]
+extend-exclude = ["alembic/versions"]
+
 [tool.ruff.lint.per-file-ignores]
-# Streamlit exige nomes Title Case para paginas (Home.py, app/pages/1_Dashboard.py, ...)
-"src/w8t/app/**" = ["N999"]
+# Streamlit exige nomes Title Case para paginas (Home.py, app/pages/1_Dashboard.py, ...).
+# DTZ011: registros sao por dia-calendario no fuso do usuario, nao UTC - date.today() e o correto aqui.
+"src/w8t/app/**" = ["N999", "DTZ011"]
 
 [build-system]
 requires = ["uv_build>=0.12.17,<0.13.0"]
