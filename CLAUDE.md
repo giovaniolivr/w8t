@@ -25,12 +25,26 @@ e estado*, não repete a spec inteira.
 - Nunca tratar correlação como causalidade.
 - Cada feature analítica deve verificar se há dado suficiente antes de rodar, e informar
   claramente quando não há, em vez de produzir resultado artificial.
-- Diferenciar sempre: valor registrado / métrica calculada / tendência estimada / anomalia
-  detectada / previsão / insight gerado por IA.
+- Diferenciar sempre quatro categorias de valor, nunca misturadas na mesma tabela/estrutura:
+  **medição real** (`weight_entries`, o que o usuário de fato registrou) / **estado
+  filtrado-suavizado** (saída do Kalman, descreve tendência subjacente a partir de medições
+  ruidosas) / **valor reconstruído-interpolado** (preenchimento de gap via Kalman/GPR) /
+  **previsão futura**. As três últimas nunca são gravadas em `weight_entries` nem em qualquer
+  lugar que possa ser confundido com medição real — são sempre derivadas/computadas (ou, se
+  cacheadas por performance, numa tabela própria e claramente marcada como estimativa).
 - A camada de insights (LLM) só narra números já calculados pelas outras camadas — nunca calcula
   nada sozinha.
+- **Dados temporais nunca são embaralhados.** Nenhum split aleatório (`shuffle=True`,
+  `train_test_split` clássico, k-fold aleatório) em cima da série de peso. Treino/validação/
+  avaliação sempre respeitam a ordem cronológica: split cronológico simples ou walk-forward/
+  rolling. Nenhuma avaliação pode usar informação que só existiria "no futuro" em relação ao
+  ponto sendo avaliado.
+- A referência temporal de cada registro é sempre `entry_date` (a data a que o peso se refere),
+  nunca `created_at`/ordem de inserção no banco. Um registro pode ser inserido fora de ordem
+  (ex.: registrar segunda-feira na terça) e isso não pode afetar nenhum cálculo — já suportado
+  pelo modelo atual (`WeightEntry.entry_date` vs. `created_at`).
 
-## Decisões de arquitetura (fechadas em 2026-09-21)
+## Decisões de arquitetura (fechadas em 2026-09-21, com adições em 2026-09-23)
 
 ### Modelagem
 Sem deep learning / rede treinada do zero — dado de um único usuário (centenas de pontos/ano) é
@@ -48,6 +62,49 @@ ganham de modelos data-hungry. Progressão planejada:
 "Treinar" aqui significa reajustar os parâmetros de cada modelo leve a cada novo dado, não treinar
 uma rede do zero.
 
+**Kalman: filter vs. smoother.** Para exibir "qual era a tendência num ponto do passado" (uso
+descritivo, olhando pra trás com toda a série disponível), usar o *smoother* (RTS). Para qualquer
+coisa que alimente avaliação/backtesting de previsão, usar só o *filter* (forward-only, só passado
+até aquele ponto) — usar o smoother nesse caso seria vazamento de informação futura.
+
+**GPR como referência probabilística de trajetória, não só "prever amanhã".** A posterior do GPR
+(média + variância) é candidata a virar fonte única para tendência, platô e anomalia (desvio =
+distância da observação em relação à média esperada, ponderada pela incerteza — diferença pequena
+importa quando a incerteza é baixa, diferença igual importa pouco quando a incerteza é alta). Isso
+é um *refactor futuro*, não a implementação inicial: cada detector (tendência, platô, anomalia)
+nasce como baseline simples (inclinação de janela móvel, z-score/MAD) para servir de comparação
+via backtesting antes de qualquer versão baseada em GPR — para poder aplicar de fato o princípio
+"não considerar um modelo melhor só por ser mais complexo".
+
+### Períodos/ciclos (bulking, cutting, manutenção)
+
+Decidido em 2026-09-23, ainda não implementado — mas recomendado entrar na camada de dados antes
+de aprofundar o dashboard (item 2 da spec), porque é barato agora e caro de retrofitar depois.
+
+- Nova entidade `Period`: intervalo de datas (início; fim opcional = período em andamento),
+  direção do objetivo (ganho/perda/manutenção — campo livre, não travado em jargão de
+  bodybuilding), rótulo, meta específica do período (opcional, pode sobrepor a meta global).
+- **Opcional por design**: o app continua funcionando sem nenhum período definido (spec item 32).
+  Associação de `WeightEntry` a um período é por intervalo de data na hora da consulta, não por FK
+  em cada registro — permite editar limites de um período sem tocar nos registros. Entradas fora
+  de qualquer período definido caem num "sem período" implícito.
+- Períodos não devem se sobrepor (validação na criação/edição).
+- Toda análise (dashboard, tendência, forecasting) deve poder ser escopada por período específico
+  OU pela história inteira — trend de um histórico que atravessa cutting→bulking→cutting não faz
+  sentido calculado como uma curva só.
+
+### Reconstrução de gaps (Kalman + GPR)
+
+Decidido em 2026-09-23, ainda não implementado. Depende do forecasting engine (Kalman/GPR) já
+existir e estar validado — não é a próxima coisa a construir.
+
+- Funcionalidade opt-in (usuário solicita explicitamente para um gap específico), nunca automática.
+- Kalman estima o estado/trajetória subjacente a partir das medições imperfeitas disponíveis;
+  GPR modela a trajetória de forma probabilística e estima valores (com incerteza) nos dias sem
+  observação.
+- Resultado da reconstrução **nunca** é gravado em `weight_entries` — ver princípio da taxonomia
+  de 4 categorias acima. Sempre marcado visualmente como estimativa, nunca confundido com medição.
+
 ### Camadas
 ```
 data layer          → modelos SQLAlchemy, fonte da verdade dos registros
@@ -57,6 +114,14 @@ forecasting engine   → modelos plugáveis (interface fit/predict/uncertainty),
 backtesting/eval     → roda modelos contra o passado, métricas por horizonte, comparação
 insights layer       → opcional, chama Claude API só para narrar números já calculados
 ```
+
+Fluxo da camada de insights (LLM), quando existir: dados brutos → processamento estatístico/
+modelos → análise estruturada (inclui contexto de período/objetivo quando houver: bulking/cutting/
+manutenção, duração, peso inicial/final, tendência, estabilidade, desvios, gaps, reconstruções,
+previsão + incerteza, MAE/RMSE) → LLM → explicação em linguagem natural. A LLM nunca recebe a
+série bruta como fonte principal de interpretação. **Última fase do projeto**, condicionada a
+viabilidade — na prática o custo esperado é desprezível mesmo sem tier gratuito dado o volume de
+uso (single-user, poucas chamadas), então é mais questão de prioridade do que de bloqueio técnico.
 
 ### Stack
 Python 3.12 + `uv` · Streamlit (UI) · SQLAlchemy 2.0 + Alembic · pandas/numpy · statsmodels +
@@ -122,10 +187,19 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): dashboard principal (spec item 2) — médias móveis, peso
-atual/inicial/mín/máx, variação, ritmo. Depende só do que já existe em `data/repository.py`; a
-lógica de cálculo deve nascer em `core/` (stats engine, determinístico, sem ML) com testes
-próprios antes de virar tela.
+Próximo passo (não iniciado): **modelar `Period`** (ver seção "Períodos/ciclos" acima) na camada de
+dados antes/junto do dashboard — é a única peça nova que vale antecipar por ser mais barata agora
+do que depois. Em seguida, dashboard principal (spec item 2) — médias móveis, peso
+atual/inicial/mín/máx, variação, ritmo, com opção de escopo por período ou histórico inteiro. A
+lógica de cálculo deve nascer em `core/` (stats engine, determinístico, sem ML) com testes próprios
+antes de virar tela.
+
+Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23): `Period` no data layer →
+dashboard (item 2) → tendência/platô/anomalia com baselines simples (itens 8-10) → forecasting
+engine com Kalman/GPR (itens 6, 11-14) → backtesting (item 15) → revisão opcional de
+tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
+reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
+condicionada a viabilidade).
 
 ## Convenções de trabalho
 
