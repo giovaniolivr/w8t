@@ -1,0 +1,39 @@
+[project]
+name = "w8t"
+version = "0.1.0"
+description = "W8T - acompanhamento inteligente de peso com estatistica e ML"
+readme = "README.md"
+authors = [
+    { name = "Giovaniolivr", email = "Giovaniolivr@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit>=1.38",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pandas>=2.2",
+    "numpy>=2.0",
+    "statsmodels>=0.14",
+    "scikit-learn>=1.5",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "plotly>=5.24",
+]
+
+[project.optional-dependencies]
+postgres = ["psycopg[binary]>=3.2"]
+insights = ["anthropic>=0.34"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit exige nomes Title Case para paginas (Home.py, app/pages/1_Dashboard.py, ...)
+"src/w8t/app/**" = ["N999"]
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
