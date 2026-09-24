@@ -24,11 +24,25 @@ Configurado via `.env` (copie `.env.example`). Dados reais nunca são expostos n
 
 ## Rodando localmente
 
+Com [uv](https://docs.astral.sh/uv/) instalado:
+
 ```bash
 uv sync --extra postgres --extra insights   # ou só `uv sync` se não precisar dessas extras
-uv run alembic upgrade head                 # cria/atualiza o schema do banco configurado em .env
-uv run streamlit run src/w8t/app/Home.py
+uv run python -m w8t migrate                # cria/atualiza o schema do banco configurado em .env
+uv run python -m w8t                        # sobe o app em http://localhost:8501
 ```
+
+Sem uv, usando o ambiente virtual já criado (Windows / PowerShell):
+
+```powershell
+.venv\Scripts\Activate.ps1      # ativa o ambiente (uma vez por terminal)
+python -m w8t migrate            # equivalente ao "manage.py migrate"
+python -m w8t                    # equivalente ao "manage.py runserver"; Ctrl+C para parar
+```
+
+Argumentos extras vão para o Streamlit, ex.: `python -m w8t --server.port 8600`. Para ver o modo
+demonstração localmente, use `APP_ENV=demo` no `.env` **com um `DATABASE_URL` diferente do seu
+banco real** (o botão de reset apaga todos os registros do banco configurado).
 
 ## Migrações
 
