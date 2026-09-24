@@ -11,6 +11,7 @@ from w8t.data import demo, repository
 from w8t.data import periods as periods_repo
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
+from w8t.patterns import kalman as kal
 
 GOAL_LABELS = {
     GoalDirection.LOSS: "perda",
@@ -121,27 +122,49 @@ st.caption(
 
 @st.cache_data(show_spinner=False)
 def _patterns(scoped: pd.Series):
-    # Streamlit reruns the script on every interaction; detection is O(n * window) and only
-    # needs recomputing when the scoped series itself changes (cache key = series content).
+    """Kalman-based detectors (better than the baselines on the labeled evaluation,
+    docs/patterns_benchmark.md); the deterministic baselines take over when the history is too
+    short for the model. Cached: several model fits, recomputed only when the series changes."""
+    states = kal.smoothed_states(scoped)
+    if states is None:
+        return (
+            "baseline", trend.current_trend(scoped), "baseline",
+            plateau.detect_plateaus(scoped), anomaly.detect_anomalies(scoped), None,
+        )
+    k_trend = kal.current_trend(scoped)
     return (
-        trend.current_trend(scoped),
-        plateau.detect_plateaus(scoped),
-        anomaly.detect_anomalies(scoped),
+        "kalman",
+        k_trend if k_trend is not None else trend.current_trend(scoped),
+        "kalman" if k_trend is not None else "baseline",
+        kal.detect_plateaus(scoped),
+        kal.detect_anomalies(scoped),
+        states,
     )
 
 
-current_trend, plateaus, anomalies = _patterns(series)
+method, current_trend, trend_method, plateaus, anomalies, states = _patterns(series)
 flagged = anomalies[anomalies["is_anomaly"]]
 
 st.subheader("Padrões")
 t1, t2, t3 = st.columns(3)
+trend_label = (
+    f"Tendência (Kalman, {kal.TREND_WINDOW_DAYS} dias)" if trend_method == "kalman"
+    else f"Tendência ({trend.TREND_WINDOW_DAYS} dias)"
+)
+trend_how = (
+    f"Inclinação do nível estimada pelo filtro de Kalman nos últimos {kal.TREND_WINDOW_DAYS} "
+    "dias (separa ruído da balança de mudança real de ritmo)."
+    if trend_method == "kalman"
+    else "Reta de mínimos quadrados sobre as medições da janela (histórico curto demais para "
+    "o modelo de Kalman)."
+)
 if current_trend is None:
-    t1.metric(f"Tendência ({trend.TREND_WINDOW_DAYS} dias)", "dados insuficientes",
+    t1.metric(trend_label, "dados insuficientes",
               help=f"Exige ≥ {trend.TREND_MIN_OBS} medições nos últimos "
                    f"{trend.TREND_WINDOW_DAYS} dias do escopo.")
 else:
     t1.metric(
-        f"Tendência ({trend.TREND_WINDOW_DAYS} dias)",
+        trend_label,
         current_trend.direction.value,
         f"{current_trend.slope_kg_per_week:+.2f} kg/sem "
         f"(IC95% {current_trend.ci_low_kg_per_week:+.2f} a "
@@ -149,34 +172,59 @@ else:
         delta_color="off",
         delta_arrow="off",  # the direction is the value itself; an arrow could contradict it
         help=(
-            "Reta de mínimos quadrados sobre as medições da janela. Só indica direção quando o "
-            "intervalo de confiança de 95% exclui zero e a inclinação passa de "
-            f"±{trend.STABLE_BAND_KG_PER_WEEK} kg/sem; \"estável\" quando o intervalo inteiro "
-            "fica dentro dessa faixa; \"indefinido\" quando o ruído não permite concluir."
+            f"{trend_how} Só indica direção quando o intervalo de confiança de 95% exclui zero "
+            f"e a inclinação passa de ±{trend.STABLE_BAND_KG_PER_WEEK} kg/sem; \"estável\" "
+            "quando o intervalo inteiro fica dentro dessa faixa; \"indefinido\" quando o ruído "
+            "não permite concluir."
         ),
     )
-t2.metric("Platôs detectados", len(plateaus),
-          help=f"Trechos de ≥ {plateau.PLATEAU_MIN_DAYS} dias em que a inclinação da janela de "
-               f"{plateau.PLATEAU_WINDOW_DAYS} dias ficou abaixo de "
-               f"±{plateau.PLATEAU_MAX_ABS_SLOPE_KG_PER_WEEK} kg/sem.")
-t3.metric("Medições atípicas", len(flagged),
-          help="Medições que se desviam da tendência das semanas anteriores além do esperado "
-               f"pelo ruído (|z robusto| ≥ {anomaly.ANOMALY_Z_THRESHOLD}). Atípico não significa "
-               "errado — a medição é mantida como registrada.")
+t2.metric(
+    "Platôs detectados", len(plateaus),
+    help=(
+        f"Trechos de ≥ {plateau.PLATEAU_MIN_DAYS} dias em que a inclinação "
+        + ("suavizada do Kalman (usa o histórico todo, localiza melhor início e fim)"
+           if method == "kalman" else f"da janela de {plateau.PLATEAU_WINDOW_DAYS} dias")
+        + f" ficou abaixo de ±{plateau.PLATEAU_MAX_ABS_SLOPE_KG_PER_WEEK} kg/sem."
+    ),
+)
+t3.metric(
+    "Medições atípicas", len(flagged),
+    help=(
+        ("Medições longe do previsto pelo filtro de Kalman com os dias anteriores, além do "
+         f"esperado pelo ruído (|z| ≥ {kal.ANOMALY_Z_THRESHOLD}); atípicas são isoladas para não "
+         "contaminar os dias seguintes. " if method == "kalman" else
+         "Medições que se desviam da tendência das semanas anteriores além do esperado pelo "
+         f"ruído (|z robusto| ≥ {anomaly.ANOMALY_Z_THRESHOLD}). ")
+        + "Atípico não significa errado — a medição é mantida como registrada."
+    ),
+)
 
 # Same scoped series as the KPI cards, so the chart's last MA point matches the card value.
 ma7 = metrics.rolling_mean(series, 7)
 ma30 = metrics.rolling_mean(series, 30)
+# With the model trend on screen the moving averages start hidden (one click in the legend).
+ma_visible = "legendonly" if states is not None else True
 
 fig = go.Figure()
+if states is not None:
+    fig.add_trace(go.Scatter(x=states.index, y=states["level_hi"], mode="lines",
+                             line={"width": 0}, showlegend=False, hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=states.index, y=states["level_lo"], mode="lines",
+                             line={"width": 0}, fill="tonexty",
+                             fillcolor=theme.TREND_STATE_BAND, name="Faixa 95% da tendência",
+                             hoverinfo="skip"))
+    fig.add_trace(go.Scatter(x=states.index, y=states["level_kg"], mode="lines",
+                             name="Tendência estimada (Kalman)",
+                             line={"color": theme.TREND_STATE, "width": 2.5},
+                             hovertemplate="%{y:.1f} kg (estimativa do modelo)<extra></extra>"))
 fig.add_trace(go.Scatter(x=series.index, y=series, mode="markers", name="Medição real",
                          marker={"size": 7, "color": theme.MEASUREMENT}))
 fig.add_trace(go.Scatter(x=ma7.index, y=ma7, mode="lines", name="Média móvel 7d",
-                         line={"color": theme.MOVING_AVG_SHORT, "width": 2.5},
-                         connectgaps=False))
+                         line={"color": theme.MOVING_AVG_SHORT, "width": 2, "dash": "dot"},
+                         connectgaps=False, visible=ma_visible))
 fig.add_trace(go.Scatter(x=ma30.index, y=ma30, mode="lines", name="Média móvel 30d",
                          line={"color": theme.MOVING_AVG_LONG, "dash": "dash"},
-                         connectgaps=False))
+                         connectgaps=False, visible=ma_visible))
 for p in plateaus:
     fig.add_vrect(x0=p.start, x1=p.end, fillcolor=theme.PLATEAU_FILL, line_width=0, layer="below",
                   annotation_text="platô", annotation_position="top left")
@@ -198,9 +246,13 @@ fig.update_layout(
 )
 st.plotly_chart(fig, width="stretch")
 st.caption(
-    "Pontos são medições registradas. Linhas são médias derivadas dessas medições — "
-    "calculadas apenas quando há medições suficientes na janela; dias sem registro não são "
-    "preenchidos. Faixas cinza marcam platôs; círculos âmbar, medições atípicas."
+    "Pontos cinza são medições registradas. "
+    + ("A linha verde contínua é a tendência estimada pelo modelo (estado suavizado do filtro "
+       "de Kalman) com faixa de 95% — em dias sem registro ela é uma estimativa do modelo, não "
+       "uma medição. Médias móveis ficam disponíveis na legenda. " if states is not None else
+       "Linhas são médias derivadas dessas medições, calculadas apenas quando há medições "
+       "suficientes na janela; dias sem registro não são preenchidos. ")
+    + "Faixas cinza marcam platôs; círculos âmbar, medições atípicas."
 )
 
 
@@ -231,7 +283,11 @@ if plateaus:
     )
     st.caption(
         "Platô é estabilidade do peso, não um julgamento: em manutenção é o esperado; em perda "
-        "ou ganho indica estagnação. O início é aproximado — a detecção usa janelas móveis."
+        "ou ganho indica estagnação. "
+        + ("Início e fim vêm da inclinação suavizada, que usa o histórico todo — por isso um "
+           "platô recente pode ser revisto conforme novos registros chegam."
+           if method == "kalman" else
+           "O início é aproximado — a detecção usa janelas móveis.")
     )
 
 if not flagged.empty:
@@ -242,13 +298,13 @@ if not flagged.empty:
                 "Data": [_d(ts.date()) for ts in flagged.index],
                 "Peso (kg)": flagged["weight_kg"].round(1).to_list(),
                 "Esperado pela tendência (kg)": flagged["expected_kg"].round(1).to_list(),
-                "z robusto": flagged["robust_z"].round(1).to_list(),
+                "z (desvio padronizado)": flagged["robust_z"].round(1).to_list(),
             }
         ),
         hide_index=True,
         column_config={
             "Peso (kg)": st.column_config.NumberColumn(format="%.1f"),
             "Esperado pela tendência (kg)": st.column_config.NumberColumn(format="%.1f"),
-            "z robusto": st.column_config.NumberColumn(format="%+.1f"),
+            "z (desvio padronizado)": st.column_config.NumberColumn(format="%+.1f"),
         },
     )

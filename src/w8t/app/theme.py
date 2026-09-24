@@ -23,3 +23,7 @@ PLATEAU_FILL = "rgba(156, 163, 175, 0.12)"
 # dashed mean + translucent interval band.
 FORECAST = GREEN
 FORECAST_BAND = "rgba(34, 197, 94, 0.15)"
+
+# Kalman smoothed trend: a derived state (green), drawn with its uncertainty band.
+TREND_STATE = GREEN
+TREND_STATE_BAND = "rgba(34, 197, 94, 0.12)"

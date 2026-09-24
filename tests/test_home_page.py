@@ -129,8 +129,25 @@ def test_home_patterns_section(app):
     at = app.run()
 
     assert not at.exception
-    assert _metric(at, "Tendência (21 dias)").value == "descendo"
+    # 40 days of data: enough for the Kalman detectors (the dashboard says which one ran).
+    assert _metric(at, "Tendência (Kalman, 60 dias)").value == "descendo"
     assert _metric(at, "Platôs detectados").value == "0"
     assert _metric(at, "Medições atípicas").value == "1"
     anomalies_table = at.dataframe[-1].value
     assert anomalies_table["Data"].iloc[0] == (start + timedelta(days=30)).strftime("%d/%m/%Y")
+
+
+def test_short_history_falls_back_to_baseline_detectors(app):
+    # 10 daily points: too short for the Kalman model (needs 14 over 21 days).
+    start = TODAY - timedelta(days=9)
+    with db_module.get_session() as session:
+        for i in range(10):
+            repository.create_entry(
+                session, entry_date=start + timedelta(days=i), weight_kg=90.0 - 0.1 * i
+            )
+
+    at = app.run()
+
+    assert not at.exception
+    assert _metric(at, "Tendência (21 dias)").value == "descendo"
+    assert not any("Kalman" in c.value for c in at.caption)

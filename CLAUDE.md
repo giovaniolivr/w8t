@@ -438,6 +438,46 @@ Feito:
     ≥ média-dos-limites quando discordam, quantil da mistura vs. Monte Carlo, gate por membro,
     protótipos intactos, reuso no backtesting ≡ reajuste).
 
+- **Tendência / platô / anomalia via Kalman + avaliação rotulada — completo (2026-09-24).**
+  - `src/w8t/patterns/kalman.py` (pacote novo `patterns/`: detectores *baseados em modelo*; os
+    determinísticos continuam em `core/` como referência). Mesmos tipos de saída dos baselines.
+    `smoothed_states` (nível e inclinação suavizados diários com faixa 95% e coluna `observed` —
+    linhas não observadas são reconstrução do modelo), `current_trend` (inclinação *filtrada* no
+    último dia, ajuste só nos últimos 60 dias, mesma regra de decisão do baseline),
+    `detect_plateaus` (inclinação *suavizada* |·| < 0,25 kg/sem por ≥ 21 dias — uso descritivo,
+    usar dados posteriores para localizar platô passado é legítimo), `detect_anomalies`
+    (inovações do *filtro* padronizadas, |z| ≥ 3,5; ponto marcado vira faltante e o modelo é
+    reajustado, maior |z| primeiro — evita contaminar os dias seguintes; variâncias estimadas na
+    série toda). `forecasting/kalman.fit_smooth_trend` extraído para reuso (fallback Powell
+    incluso); variâncias ~−1e-18 do suavizador são truncadas em 0.
+  - `src/w8t/patterns/evaluation.py` + `python -m w8t.patterns.evaluation` →
+    `docs/patterns_benchmark.md`/`.csv`: 6 cenários (cutting→platô, bulk, manutenção semanal,
+    cutting→bulk, cutting rápido, manutenção→cutting) × 8 sementes = 48 séries com **gabarito**
+    (inclinação verdadeira por dia + 3 anomalias plantadas de 1,5-2,5 kg por série). Tendência
+    avaliada só com dados até cada checkpoint (a cada 7 dias); platô por dia medido; anomalia
+    por ponto plantado.
+  - **Resultado (geral, baseline → Kalman):** tendência correta 59% → 74%, direção errada
+    4% → 3%, indefinido 38% → 22%; platô precisão 54% → 100%, F1 70% → 100% (baseline chegava a
+    declarar platô no meio de bulk); anomalia recall 82% → 85%, falsos positivos 1,36 → 0,11 por
+    100 medições (12x menos). Na demo: só a anomalia plantada (baseline: +2 falsas); início do
+    platô a 2 dias do real (baseline 9 dias adiantado); ritmo final +0,07 kg/sem = valor
+    verdadeiro.
+  - **Ponto fraco honesto — tendência após mudança de regime:** ajustado na série toda, o
+    Kalman estima variância de inclinação ~0 e reage devagar a viradas (cutting→bulk 45% vs 75%
+    do baseline). Janela de 60 dias resolve boa parte (63%; em cutting→platô passa o baseline,
+    55% vs 49%) — escolhida entre {toda, 90, 60} na mesma avaliação (viés de seleção). Em
+    cutting→bulk o baseline de 21 dias ainda reage melhor.
+  - `Home.py`: detectores Kalman por padrão com **fallback para os baselines** quando o histórico
+    é curto (< 14 medições / 21 dias) — o rótulo/ajuda dizem qual método rodou. Gráfico ganhou a
+    **tendência estimada (Kalman) com faixa 95%** (verde contínuo, categoria "estado
+    filtrado-suavizado"; legenda avisa que em dias sem registro é estimativa do modelo); médias
+    móveis passam a começar ocultas (clicáveis na legenda) quando a tendência do modelo está
+    presente. Conferido no navegador.
+  - Testes: `tests/test_patterns_kalman.py` (insuficiente, grade diária com `observed`, ritmo
+    recuperado, direção, janela de 60 dias, fronteira do platô ±7 dias, sem platô em ganho
+    contínuo, anomalia sem alarmes em cascata, série intacta, colunas iguais ao baseline, séries
+    rotuladas determinísticas, contagens consistentes) + casos de UI (Kalman e fallback).
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -447,15 +487,11 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): seguir o roadmap — tendência/platô/anomalia usando o smoother do
-Kalman (e/ou posterior do GPR), comparados contra os baselines atuais (`core/trend.py`,
-`core/plateau.py`, `core/anomaly.py`) com métricas próprias em séries sintéticas com rótulos
-conhecidos (os cenários do benchmark sabem onde está o platô/anomalia plantados) →
-reconstrução de gaps → insights via LLM. Se o GPR for revisitado, escolher kernel pelo
-benchmark multi-série, não pela demo.
-
-Oportunidade registrada: usar o *smoother* do Kalman no dashboard como a categoria "estado
-filtrado-suavizado" (tendência subjacente com banda), claramente distinto das medições.
+Próximo passo (não iniciado): reconstrução de gaps (opt-in, por gap escolhido pelo usuário),
+reusando `patterns.kalman.smoothed_states` (já devolve nível + faixa 95% nos dias sem registro,
+marcados `observed=False`) — nunca gravado em `weight_entries`, sempre exibido como estimativa.
+Avaliar como os outros: apagar trechos de séries sintéticas com verdade conhecida e medir erro e
+cobertura da faixa. Depois: camada de insights via LLM (última fase).
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.

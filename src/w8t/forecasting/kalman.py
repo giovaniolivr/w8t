@@ -34,6 +34,33 @@ from w8t.core.trend import days_since
 from w8t.forecasting.base import ForecastModel, InsufficientDataError
 
 
+class NotConvergedError(InsufficientDataError):
+    pass
+
+
+def fit_smooth_trend(series: pd.Series):
+    """Fit the smooth-trend model on a daily grid (missing days = NaN, never filled).
+
+    Returns the statsmodels results object. Raises :class:`NotConvergedError` if neither L-BFGS
+    nor the Powell fallback converges.
+    """
+    daily = series.asfreq("D")
+    model = UnobservedComponents(daily, level="strend")
+    with warnings.catch_warnings():
+        # statsmodels warns liberally; convergence is checked explicitly below
+        warnings.simplefilter("ignore")
+        result = model.fit(disp=False)
+        if not result.mle_retvals.get("converged", False):
+            # L-BFGS flags "not converged" when the optimum sits on the boundary
+            # (sigma2.trend -> 0, a deterministic trend). Powell reaches the same likelihood
+            # and parameters and does report convergence there (checked on the demo), so
+            # retry rather than discard a valid estimate.
+            result = model.fit(disp=False, method="powell", maxiter=2000)
+    if not result.mle_retvals.get("converged", False):
+        raise NotConvergedError("Kalman: estimação não convergiu com estes dados.")
+    return result
+
+
 class KalmanSmoothTrend(ForecastModel):
     name = "Kalman (tendência suave)"
     min_obs = 14
@@ -44,20 +71,7 @@ class KalmanSmoothTrend(ForecastModel):
             raise InsufficientDataError(
                 f"{self.name}: precisa de medições cobrindo ≥ {self.min_span_days} dias."
             )
-        daily = series.asfreq("D")  # missing days become NaN - handled by the filter, not filled
-        model = UnobservedComponents(daily, level="strend")
-        with warnings.catch_warnings():
-            # statsmodels warns liberally; convergence is checked explicitly below
-            warnings.simplefilter("ignore")
-            result = model.fit(disp=False)
-            if not result.mle_retvals.get("converged", False):
-                # L-BFGS flags "not converged" when the optimum sits on the boundary
-                # (sigma2.trend -> 0, a deterministic trend). Powell reaches the same likelihood
-                # and parameters and does report convergence there (checked on the demo), so
-                # retry rather than discard a valid estimate.
-                result = model.fit(disp=False, method="powell", maxiter=2000)
-        if not result.mle_retvals.get("converged", False):
-            raise InsufficientDataError(f"{self.name}: estimação não convergiu com estes dados.")
+        result = fit_smooth_trend(series)
         self._result = result
         params = dict(zip(result.model.param_names, result.params, strict=True))
         self.noise_sd = float(np.sqrt(params["sigma2.irregular"]))
