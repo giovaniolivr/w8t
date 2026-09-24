@@ -117,6 +117,33 @@ button, input, textarea, [data-testid="stMetricValue"], [data-testid="stMetricDe
 [data-testid="stForm"] { padding: 18px 18px 8px 18px; }
 [data-testid="stDataFrame"] { padding: 4px; }
 
+/* Cards built with st.container(border=True, key="w8t-card-...") - the key becomes a stable
+   CSS class (st-key-...); in this Streamlit version the bordered block has no wrapper testid. */
+[class*="st-key-w8t-card"] {
+  background: linear-gradient(150deg, var(--w8t-surface-2) 0%, var(--w8t-surface) 100%);
+  border-color: var(--w8t-border) !important;
+  border-radius: 18px !important;
+  box-shadow: var(--w8t-shadow);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  animation: w8t-rise .5s ease-out both;
+}
+[class*="st-key-w8t-card"]:hover {
+  border-color: rgba(34, 197, 94, 0.35) !important;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
+  transform: translateY(-2px);
+}
+[class*="st-key-w8t-card"] h4 { margin-bottom: .1rem; }
+/* Metrics inside a card: lighter and smaller, so three fit side by side in half a row. */
+[class*="st-key-w8t-card"] [data-testid="stMetric"] {
+  background: rgba(255, 255, 255, 0.025); box-shadow: none; padding: 10px 12px;
+}
+[class*="st-key-w8t-card"] [data-testid="stMetric"]:hover { transform: none; }
+[class*="st-key-w8t-card"] [data-testid="stMetricValue"] { font-size: 1.35rem; }
+[class*="st-key-w8t-card"] [data-testid="stMetricValue"] [data-testid="stMarkdownContainer"] {
+  overflow: visible; text-overflow: clip;
+}
+[data-testid="stProgress"] > div > div > div > div { background: linear-gradient(90deg, #16A34A, #86EFAC); }
+
 /* Buttons */
 .stButton > button, [data-testid="stFormSubmitButton"] > button {
   border-radius: 10px; font-weight: 600;

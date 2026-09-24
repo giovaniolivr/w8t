@@ -210,3 +210,19 @@ def test_no_suggestion_when_trend_matches_goal(app):
     at = app.run()
 
     assert not any("O peso começou" in m.value for m in at.markdown)
+
+
+def test_dashboard_opens_the_period_requested_in_the_url(app):
+    _seed_reversal(GoalDirection.GAIN)
+    with db_module.get_session() as session:
+        old = periods.create_period(
+            session, label="Antigo", goal_direction=GoalDirection.LOSS,
+            start_date=TODAY - timedelta(days=200), end_date=TODAY - timedelta(days=150),
+        )
+        old_id = old.id
+
+    app.query_params["periodo"] = str(old_id)
+    at = app.run()
+
+    assert not at.exception
+    assert at.selectbox[0].value.startswith("Antigo")

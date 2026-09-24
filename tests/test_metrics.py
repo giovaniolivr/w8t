@@ -112,3 +112,22 @@ def test_slice_series_is_inclusive_and_open_ended():
     assert len(metrics.slice_series(series, day(2), day(4))) == 3
     assert len(metrics.slice_series(series, day(5), None)) == 5
     assert len(metrics.slice_series(series, None, None)) == 10
+
+
+@pytest.mark.parametrize(
+    ("initial", "current", "target", "expected"),
+    [
+        (90.0, 85.0, 80.0, 0.5),  # losing, halfway
+        (70.0, 75.0, 80.0, 0.5),  # gaining, halfway
+        (90.0, 80.0, 80.0, 1.0),
+        (90.0, 78.0, 80.0, 1.2),  # overshoot
+        (90.0, 92.0, 80.0, -0.2),  # moved away
+        (90.0, 90.0, 80.0, 0.0),
+    ],
+)
+def test_goal_progress(initial, current, target, expected):
+    assert metrics.goal_progress(initial, current, target) == pytest.approx(expected)
+
+
+def test_goal_progress_without_distance_is_none():
+    assert metrics.goal_progress(80.0, 79.0, 80.0) is None

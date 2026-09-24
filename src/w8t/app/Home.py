@@ -70,6 +70,12 @@ active = next(
     (p for p in all_periods if p.start_date <= latest <= (p.end_date or date.max)), None
 )
 default_index = list(options.values()).index(active) if active is not None else 0
+# "Ver análises" on the Períodos page opens the dashboard with ?periodo=<id>.
+requested = st.query_params.get("periodo")
+if requested is not None:
+    match = next((p for p in all_periods if str(p.id) == requested), None)
+    if match is not None:
+        default_index = list(options.values()).index(match)
 choice = st.selectbox(
     "Escopo", list(options), index=default_index,
     help="Por padrão, o período atual. Também dá para ver o histórico inteiro ou outro período.",
@@ -119,7 +125,8 @@ def _switch_period_dialog(current, suggested):
 
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Peso atual", _kg(summary.current_kg), f"{summary.change_kg:+.1f} kg no escopo",
+closed = period is not None and period.end_date is not None and period.end_date < date.today()
+c1.metric("Peso final" if closed else "Peso atual", _kg(summary.current_kg), f"{summary.change_kg:+.1f} kg no escopo",
           delta_color="off", help=f"Última medição, em {_d(summary.last_date)}.")
 c2.metric("Peso inicial", _kg(summary.initial_kg), help=f"Primeira medição, em {_d(summary.first_date)}.")
 c3.metric("Mínimo", _kg(summary.min_kg), _d(summary.min_date), delta_color="off", delta_arrow="off")

@@ -1,10 +1,11 @@
 from datetime import date
 
-import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
-from w8t.app import ui
-from w8t.data import periods
+from w8t.app import theme, ui
+from w8t.core import metrics
+from w8t.data import periods, repository
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
 
@@ -107,22 +108,90 @@ st.subheader("Períodos cadastrados")
 
 with get_session() as session:
     all_periods = periods.list_periods(session, ascending=False)
+    weights = metrics.to_series(
+        (e.entry_date, e.weight_kg) for e in repository.list_entries(session)
+    )
+
+TODAY = date.today()
+
+
+def _status(p) -> str:
+    if p.end_date is None:
+        return "em andamento"
+    if p.end_date >= TODAY:
+        return f"planejado até {_fmt(p.end_date)}"
+    return f"encerrado em {_fmt(p.end_date)}"
+
+
+def _sparkline(p, s):
+    fig = go.Figure(go.Scatter(
+        x=s.index, y=s, mode="lines+markers",
+        line={"color": theme.GREEN, "width": 2}, marker={"size": 4, "color": theme.GRAY},
+    ))
+    if p.target_weight_kg is not None:
+        fig.add_hline(y=p.target_weight_kg, line_dash="dot", line_color=theme.GRAY)
+    # Fixed minimum vertical span: with autoscale a flat maintenance period's 1 kg of scale
+    # noise fills the whole card and looks like big swings.
+    values = [*s.tolist(), *([p.target_weight_kg] if p.target_weight_kg is not None else [])]
+    mid, span = (max(values) + min(values)) / 2, max(max(values) - min(values), 3.0) * 1.1
+    fig.update_layout(
+        height=90, margin={"l": 0, "r": 0, "t": 4, "b": 0}, showlegend=False,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"visible": False},
+        yaxis={"visible": False, "range": [mid - span / 2, mid + span / 2]},
+    )
+    st.plotly_chart(fig, width="stretch", config={"staticPlot": True}, key=f"spark_{p.id}")
+
+
+def _period_card(p) -> None:
+    s = metrics.slice_series(weights, p.start_date, p.end_date or TODAY)
+    ongoing = p.end_date is None or p.end_date >= TODAY
+    with st.container(border=True, key=f"w8t-card-period-{p.id}"):
+        st.markdown(
+            f"#### {p.label}\n\n{ui.pill(DIRECTION_LABELS[p.goal_direction])}"
+            f"{ui.pill(_status(p))}",
+            unsafe_allow_html=True,
+        )
+        st.caption(f"{_fmt(p.start_date)} → {_fmt(p.end_date) if p.end_date else 'hoje'}")
+        summary = metrics.summarize(s)
+        if summary is None:
+            st.caption("Nenhuma medição neste período ainda.")
+        else:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Começo", f"{summary.initial_kg:.1f} kg", _fmt(summary.first_date),
+                      delta_color="off", delta_arrow="off")
+            c2.metric("Agora" if ongoing else "Final", f"{summary.current_kg:.1f} kg",
+                      _fmt(summary.last_date), delta_color="off", delta_arrow="off")
+            pace = summary.pace_kg_per_week
+            c3.metric("Variação", f"{summary.change_kg:+.1f} kg",
+                      f"{pace:+.2f} kg/sem" if pace is not None else f"{summary.n_entries} medições",
+                      delta_color="off", delta_arrow="off")
+            if len(s) >= 2:
+                _sparkline(p, s)
+            if p.target_weight_kg is not None:
+                progress = metrics.goal_progress(
+                    summary.initial_kg, summary.current_kg, p.target_weight_kg
+                )
+                if progress is not None:
+                    if progress < 0:
+                        text = f"Meta {p.target_weight_kg:.1f} kg · afastou-se da meta"
+                    elif progress >= 1:
+                        text = f"Meta {p.target_weight_kg:.1f} kg · alcançada"
+                    else:
+                        text = f"Meta {p.target_weight_kg:.1f} kg · {progress:.0%} do caminho"
+                    st.progress(min(max(progress, 0.0), 1.0), text=text)
+        if st.button("Ver análises", key=f"open_{p.id}", icon=":material/insights:"):
+            # Dashboard scoped to this period: same charts, trend, plateaus and anomalies.
+            st.switch_page("Home.py", query_params={"periodo": str(p.id)})
+
 
 if not all_periods:
     st.info("Nenhum período cadastrado ainda. Ao registrar o primeiro peso você define o objetivo.")
 else:
-    rows = [
-        {
-            "id": p.id,
-            "Nome": p.label,
-            "Objetivo": DIRECTION_LABELS[p.goal_direction],
-            "Início": p.start_date,
-            "Fim": p.end_date if p.end_date else "em andamento",
-            "Meta (kg)": p.target_weight_kg if p.target_weight_kg else "—",
-        }
-        for p in all_periods
-    ]
-    st.dataframe(pd.DataFrame(rows).set_index("id"), width="stretch")
+    columns = st.columns(2)
+    for i, p in enumerate(all_periods):
+        with columns[i % 2]:
+            _period_card(p)
 
     st.subheader("Editar ou excluir")
     options = {f"{p.label} ({p.start_date.strftime('%d/%m/%Y')})": p.id for p in all_periods}

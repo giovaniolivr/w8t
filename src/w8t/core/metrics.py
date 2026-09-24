@@ -128,3 +128,16 @@ def summarize(series: pd.Series) -> Summary | None:
         moving_avg_7d=None if pd.isna(ma7) else float(ma7),
         moving_avg_30d=None if pd.isna(ma30) else float(ma30),
     )
+
+
+def goal_progress(initial_kg: float, current_kg: float, target_kg: float) -> float | None:
+    """Fraction of the way from ``initial_kg`` to ``target_kg`` covered by ``current_kg``.
+
+    0 = still at the start, 1 = target reached, > 1 = past the target, < 0 = moved away from it.
+    Works the same for losing and gaining. ``None`` when start and target coincide (no distance).
+    Not clipped - the UI decides how to display overshoot or regress.
+    """
+    distance = target_kg - initial_kg
+    if abs(distance) < 1e-9:
+        return None
+    return (current_kg - initial_kg) / distance

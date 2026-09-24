@@ -655,6 +655,25 @@ Feito:
     (exceto demo, cujo texto fixo é do histórico completo). `periods.period_containing` (lookup
     puro) compartilhado.
 
+- **Cartões de período + análise de períodos anteriores (2026-09-24).**
+  - Períodos: a tabela virou cartões (2 por linha, mais recente primeiro) com objetivo e status
+    (em andamento / planejado até / encerrado em), datas, **Começo → Agora/Final** (peso e data
+    da primeira e da última medição no período), variação e ritmo, mini-gráfico da trajetória
+    (escala vertical mínima de 3 kg — com autoescala o ruído de ~1 kg de uma manutenção enchia o
+    cartão e parecia grandes oscilações) e barra de progresso da meta
+    (`core.metrics.goal_progress`: fração do caminho do peso inicial à meta, igual para
+    perder/ganhar, sem clip; UI mostra "alcançada" ≥ 1 e "afastou-se da meta" < 0).
+  - Botão **"Ver análises"** → `st.switch_page("Home.py", query_params={"periodo": id})`; o
+    dashboard lê `st.query_params["periodo"]` e abre naquele escopo (mesmas análises, inclusive
+    para período encerrado; cartão principal passa a dizer "Peso final").
+  - CSS de cartão via `st.container(border=True, key="w8t-card-...")` → classe estável
+    `st-key-w8t-card...` (nesta versão o bloco com borda é o próprio `stVerticalBlock`, sem
+    wrapper próprio — seletor por testid não pegava). Métricas dentro de cartão ficam menores e
+    sem o corte com "…" do `stMarkdownContainer`.
+  - Testes: `goal_progress` em `tests/test_metrics.py`; cartões (começo/agora, progresso 50%,
+    "Final" em período encerrado) em `tests/test_periodos_page.py`; escopo pela URL em
+    `tests/test_home_page.py`. 230 testes.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
