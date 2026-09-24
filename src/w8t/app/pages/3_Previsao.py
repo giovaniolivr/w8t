@@ -13,6 +13,7 @@ from w8t.forecasting.backtest import (
 )
 from w8t.forecasting.base import InsufficientDataError
 from w8t.forecasting.registry import all_models
+from w8t.forecasting.significance import MIN_EFFECTIVE_CASES, versus_best
 
 REFERENCE = "Último valor"
 FORECAST_DAYS = 30
@@ -41,10 +42,24 @@ if series.empty:
 @st.cache_data(show_spinner="Rodando backtesting...")
 def _backtest(s: pd.Series):
     result = walk_forward(s, all_models(), step_days=BACKTEST_STEP_DAYS)
-    return result.summary(reference=REFERENCE), result.skipped
+    fc = result.forecasts
+    common = fc[fc.groupby(["origin", "horizon"])["model"].transform("nunique")
+                == fc["model"].nunique()]
+    significance = versus_best(common, step_days=BACKTEST_STEP_DAYS)
+    return result.summary(reference=REFERENCE), result.skipped, significance
 
 
-summary, skipped = _backtest(series)
+def _verdict(row) -> str:
+    if not row["testable"]:
+        return "não testável: poucos casos independentes"
+    if row["p_holm"] < 0.01:
+        return "diferença demonstrada"
+    if row["p_holm"] < 0.05:
+        return "evidência fraca"
+    return "sem diferença demonstrada"
+
+
+summary, skipped, significance = _backtest(series)
 
 st.subheader("Avaliação dos modelos (backtesting)")
 if summary.empty:
@@ -83,10 +98,37 @@ else:
         f"Para cada data passada (a cada {BACKTEST_STEP_DAYS} dias), o modelo é ajustado só com "
         "os dados até aquele dia e comparado com a medição real N dias depois (sem interpolar "
         "dias faltantes). Todos os modelos são comparados nos mesmos casos. **Cobertura** é a "
-        "fração de vezes que o valor real caiu dentro do intervalo de 95%: bem abaixo de 95% = modelo confiante demais; 100% com "
-        "intervalo largo = cauteloso a ponto de ser pouco útil. **Viés** positivo = o peso real "
-        "ficou acima do previsto."
+        "fração de vezes que o valor real caiu dentro do intervalo de 95%: bem abaixo de 95% = "
+        "modelo confiante demais; 100% com intervalo largo = cauteloso a ponto de ser pouco "
+        "útil. **Viés** positivo = o peso real ficou acima do previsto."
     )
+
+    if not significance.empty:
+        st.markdown("**O menor erro é de fato menor?** (teste de Diebold-Mariano)")
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "Horizonte (dias)": significance["horizon"],
+                    "Menor MAE": significance["best"],
+                    "Comparado com": significance["other"],
+                    "Casos independentes": significance["effective_cases"],
+                    "p (Holm)": significance["p_holm"],
+                    "Conclusão": significance.apply(_verdict, axis=1),
+                }
+            ),
+            hide_index=True,
+            column_config={
+                "Casos independentes": st.column_config.NumberColumn(format="%.0f"),
+                "p (Holm)": st.column_config.NumberColumn(format="%.3f"),
+            },
+        )
+        st.caption(
+            "Previsões com horizonte maior que o intervalo entre origens se sobrepõem no tempo; "
+            "o teste leva isso em conta, o que reduz os casos *efetivamente independentes*. "
+            f"Abaixo de {MIN_EFFECTIVE_CASES} nada é afirmado. O teste é algo liberal com "
+            "dependência forte (≈6-10% de falsos positivos ao nível de 5%), por isso só "
+            "p < 0,01 conta como diferença demonstrada."
+        )
 
 st.subheader(f"Previsão para os próximos {FORECAST_DAYS} dias")
 

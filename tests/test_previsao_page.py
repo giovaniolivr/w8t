@@ -78,3 +78,18 @@ def test_model_that_cannot_fit_says_so(app):
 
     assert not at.exception
     assert any("não pode prever" in i.value for i in at.info)
+
+
+def test_significance_table_is_shown(app):
+    _seed(90)
+    at = app.run()
+
+    assert not at.exception
+    table = at.dataframe[1].value
+    assert list(table.columns) == [
+        "Horizonte (dias)", "Menor MAE", "Comparado com", "Casos independentes", "p (Holm)",
+        "Conclusão",
+    ]
+    # ~90 days of history: 30-day comparisons can't have enough independent cases.
+    h30 = table[table["Horizonte (dias)"] == 30]
+    assert (h30["Conclusão"] == "não testável: poucos casos independentes").all()

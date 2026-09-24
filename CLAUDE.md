@@ -378,6 +378,43 @@ Feito:
   - Página de previsão: backtesting agora a cada 2 dias (`BACKTEST_STEP_DAYS`) — 6 modelos em
     passo diário levavam ~33 s no primeiro carregamento.
 
+- **Rigor da comparação — significância + benchmark multi-série — completo (2026-09-24).**
+  - `src/w8t/forecasting/significance.py`: Diebold-Mariano com correção HLN, variância de longo
+    prazo com defasagens `L = ceil(h/step) − 1` (sobreposição das previsões), pesos uniformes;
+    `versus_best` (menor MAE vs. cada outro, Holm por horizonte). **Limites medidos por
+    simulação:** teste t pareado ingênuo rejeita >25% sob H0 com sobreposição; DM ainda é
+    liberal (~6-10% ao nível 5%; pesos de Bartlett piores, 12-14%) → só p < 0,01 conta como
+    "diferença demonstrada". Abaixo de 10 casos *efetivamente independentes* (`n/(L+1)`) não
+    testa e reporta "não testável" — na demo, h=14 e h=30 não são testáveis.
+  - Na demo (passo 1 dia): única diferença significativa é regressão vs. média móvel em h=1;
+    GPR/Holt/Kalman/regressão indistinguíveis em h=1 e h=7 (p 0,40-0,98).
+  - `src/w8t/forecasting/benchmark.py` + `python -m w8t.forecasting.benchmark` → `docs/
+    benchmark.md` e `.csv`. 6 cenários sintéticos (cutting→platô, bulk, manutenção com padrão
+    semanal, esparso com gaps de 12 dias e 40% faltando, cutting→bulk, perda lenta ruidosa) × 5
+    sementes = 30 séries independentes; walk-forward passo 3; Wilcoxon pareado entre séries
+    (séries são independentes → teste válido), Holm por horizonte.
+  - **Resultado — muda a conclusão tirada só da demo:**
+    - Kalman tem o menor MAE médio em todos os horizontes; demonstradamente melhor que Holt e
+      GPR em h=14 (p_holm 0,009 / 0,011); em h=30 Kalman vs. Holt não se distinguem (0,34), e
+      Holt tem a melhor cobertura (93% vs 87%).
+    - **Não há vencedor universal — depende do regime.** Tendência que continua (bulk, perda
+      lenta, esparso): Kalman vence com folga, o amortecimento do Holt atrapalha (bulk h=30: MAE
+      0,64 vs 0,41, viés +0,49). Mudança de regime (cutting→platô, cutting→bulk): Holt vence em
+      h=30 e é o melhor calibrado. Manutenção: empate. O amortecimento é uma *aposta* de que a
+      tendência acaba.
+    - A demo é justamente cutting→platô, por isso lá o Holt parecia o melhor em horizonte longo.
+    - **GPR, com kernel escolhido olhando a demo, foi o pior dos 4 principais em h=14/30** —
+      viés de seleção confirmado na prática.
+    - Valida o desenho da página: escolher o modelo pelo backtesting *da série do usuário*, não
+      fixar um vencedor global.
+  - Página de previsão: tabela "O menor erro é de fato menor?" (DM sobre os casos comuns do
+    backtesting da página) com conclusão por par: diferença demonstrada (p_holm < 0,01) /
+    evidência fraca (< 0,05) / sem diferença demonstrada / não testável.
+  - Testes: `tests/test_significance.py` (vencedor claro, "não testável", perdas idênticas → NaN,
+    taxa de falso positivo sob MA(6) vs. t ingênuo, Holm), `tests/test_benchmark.py` (cenários
+    determinísticos/realistas, gaps longos, relatórios, Wilcoxon detecta vencedor consistente) e
+    caso de UI.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -387,15 +424,12 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado), recomendado antes de novos modelos — **rigor da comparação**:
-1. Teste de significância das diferenças de erro entre modelos (Diebold-Mariano com correção
-   para horizonte h, ou bootstrap em blocos pareado), já que previsões sobrepostas são
-   autocorrelacionadas.
-2. Benchmark multi-série: várias séries sintéticas com formas diferentes (cutting→platô,
-   bulk, manutenção ruidosa, gaps longos, mudança de regime) para mitigar o viés de seleção de
-   ter escolhido kernels/janelas olhando só a demo.
-Depois, no roadmap: revisão de tendência/platô/anomalia usando a posterior do GPR/smoother do
-Kalman, comparada contra os baselines → reconstrução de gaps → insights via LLM.
+Próximo passo (não iniciado) — decidir com o usuário entre:
+- **Combinação Kalman + Holt** (média das previsões; intervalo via mistura), candidata natural
+  a robustez entre regimes, dado que cada um vence em regimes opostos. Avaliar no benchmark.
+- Seguir o roadmap: tendência/platô/anomalia usando smoother do Kalman / posterior do GPR,
+  comparados contra os baselines → reconstrução de gaps → insights via LLM.
+Se o GPR for revisitado, escolher kernel pelo benchmark multi-série, não pela demo.
 
 Oportunidade registrada: usar o *smoother* do Kalman no dashboard como a categoria "estado
 filtrado-suavizado" (tendência subjacente com banda), claramente distinto das medições.
