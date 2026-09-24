@@ -103,8 +103,8 @@ via backtesting antes de qualquer versão baseada em GPR — para poder aplicar 
 
 ### Reconstrução de gaps (Kalman + GPR)
 
-Decidido em 2026-09-23, ainda não implementado. Depende do forecasting engine (Kalman/GPR) já
-existir e estar validado — não é a próxima coisa a construir.
+Decidido em 2026-09-23; **implementado em 2026-09-24** (ver "Reconstrução de lacunas" em
+Estado atual).
 
 - Funcionalidade opt-in (usuário solicita explicitamente para um gap específico), nunca automática.
 - Kalman estima o estado/trajetória subjacente a partir das medições imperfeitas disponíveis;
@@ -478,6 +478,35 @@ Feito:
     contínuo, anomalia sem alarmes em cascata, série intacta, colunas iguais ao baseline, séries
     rotuladas determinísticas, contagens consistentes) + casos de UI (Kalman e fallback).
 
+- **Reconstrução de lacunas — completo (2026-09-24).**
+  - `src/w8t/patterns/gaps.py`: `find_gaps` (só lacunas internas, com medição antes e depois —
+    depois do último registro seria previsão), `reconstruct(series, gap, method)` → por dia
+    faltante `estimate_kg` + intervalo 95% **para uma medição** (incerteza do nível + ruído da
+    balança). Métodos: `linear` (referência; ruído estimado em pares de dias consecutivos),
+    `kalman` (nível suavizado RTS — usa os dois lados da lacuna — + variância do ruído), `gpr`
+    (kernel da previsão, ±45 dias de contexto). **Antes de qualquer método, pontos marcados pelo
+    detector de anomalias do Kalman são deixados de fora como evidência** (não apagados).
+  - `src/w8t/patterns/gaps_evaluation.py` + `python -m w8t.patterns.gaps_evaluation` →
+    `docs/gaps_benchmark.md`/`.csv`: nas 48 séries rotuladas, 2 buracos artificiais de 3, 7 e
+    14 dias por série (medições reais apagadas); erro vs. medição apagada, cobertura do IC e erro
+    vs. **peso verdadeiro sem ruído** (`LabeledSeries.true_level`, campo novo). Anomalias
+    plantadas não são pontuadas.
+  - **Resultado:** Kalman MAE vs. peso verdadeiro 0,105 kg (GPR 0,109; linear 0,236 — mais que o
+    dobro), cobertura 95% em todos os tamanhos e cenários (linear 97%, intervalo 22% mais
+    largo). **Achado:** sem mascarar anomalias, as 3 anomalias plantadas inflavam o ruído
+    estimado e a cobertura ia a 98% (intervalos largos demais); com a máscara, 94,8% e intervalo
+    20% mais estreito, mesmo erro. Limitação: padrão semanal (fim de semana) não é modelado —
+    todos pioram nesse cenário (Kalman 0,20 vs 0,04-0,13 nos demais).
+  - `src/w8t/app/pages/4_Lacunas.py`: **opt-in** — escolhe a lacuna (mais recentes primeiro) e
+    o método (Kalman recomendado), só calcula ao clicar; gráfico com medições (cinza),
+    estimativas como losango verde vazado + faixa, tabela com coluna "Tipo: estimativa — não é
+    medição". Nada é gravado (teste confirma contagem de `weight_entries` inalterada).
+    Conferido no navegador.
+  - Testes: `tests/test_gaps.py` (lacunas internas/min_days, borda e método inválido,
+    interpolação exata, Kalman/GPR recuperam a tendência com IC cobrindo, saída = exatamente os
+    dias faltantes e série intacta, flanco anômalo não usado como evidência, linhas da
+    avaliação) e `tests/test_lacunas_page.py`.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -487,19 +516,18 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): reconstrução de gaps (opt-in, por gap escolhido pelo usuário),
-reusando `patterns.kalman.smoothed_states` (já devolve nível + faixa 95% nos dias sem registro,
-marcados `observed=False`) — nunca gravado em `weight_entries`, sempre exibido como estimativa.
-Avaliar como os outros: apagar trechos de séries sintéticas com verdade conhecida e medir erro e
-cobertura da faixa. Depois: camada de insights via LLM (última fase).
+Próximo passo (não iniciado): camada de insights via LLM (última fase do roadmap) — decidir com
+o usuário antes (custo/prioridade, chave de API, modelo). Pela spec: a LLM só narra números já
+calculados (resumo estruturado com período/objetivo, tendência com IC, platôs, anomalias,
+lacunas, previsão recomendada com intervalo e cobertura medida, métricas do backtesting), nunca
+recebe a série bruta como fonte de interpretação, nunca trata correlação como causa.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
-baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt, Kalman e GPR já feitos) → revisão opcional de
-tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
-reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
+baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt, Kalman, GPR, combinação, detectores via Kalman e reconstrução de lacunas já
+feitos) → camada de insights via LLM (última fase,
 condicionada a viabilidade).
 
 ## Convenções de trabalho

@@ -50,6 +50,7 @@ class LabeledSeries:
     seed: int
     series: pd.Series
     true_slope_per_day: np.ndarray  # length N_DAYS, index = day offset
+    true_level: np.ndarray  # length N_DAYS: noise-free weight incl. deterministic patterns
     anomaly_dates: frozenset[date]
 
 
@@ -98,7 +99,8 @@ def labeled_series(scenario: str, seed: int) -> LabeledSeries:
         (START + timedelta(days=int(d)), round(float(v), 1)) for d, v in zip(days, y, strict=True)
     )
     return LabeledSeries(
-        scenario, seed, series, slope, frozenset(START + timedelta(days=d) for d in planted)
+        scenario, seed, series, slope, truth,
+        frozenset(START + timedelta(days=d) for d in planted),
     )
 
 
