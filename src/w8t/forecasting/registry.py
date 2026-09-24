@@ -5,7 +5,7 @@ from __future__ import annotations
 from w8t.forecasting.base import ForecastModel
 from w8t.forecasting.baselines import baseline_models
 from w8t.forecasting.ensemble import EqualWeightEnsemble
-from w8t.forecasting.gpr import GPRLinearRBF
+from w8t.forecasting.gpr import GPR
 from w8t.forecasting.holt import HoltDamped
 from w8t.forecasting.kalman import KalmanSmoothTrend
 
@@ -21,6 +21,7 @@ def all_models() -> list[ForecastModel]:
         *baseline_models(),
         HoltDamped(),
         KalmanSmoothTrend(),
-        GPRLinearRBF(60),
+        # Chosen on held-out seeds, confirmed (not significantly) on the benchmark: see gpr.py.
+        GPR("linear + Matérn 3/2", 90),
         kalman_holt_ensemble(),
     ]

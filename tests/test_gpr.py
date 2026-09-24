@@ -84,3 +84,47 @@ def test_interval_coverage_on_noisy_line_with_gaps():
         hits += int(fc.lower[0] <= truth <= fc.upper[0])
         trials += 1
     assert 0.85 <= hits / trials <= 1.0
+
+
+# --- kernel variants ----------------------------------------------------------------------------
+
+
+def test_unknown_kernel_rejected():
+    from w8t.forecasting.gpr import GPR
+
+    with pytest.raises(ValueError):
+        GPR("nope")
+
+
+def test_default_variant_keeps_its_public_name():
+    from w8t.forecasting.gpr import GPR
+
+    assert GPRLinearRBF(60).name == GPR().name == "GPR (linear + RBF, 60d)"
+
+
+@pytest.mark.parametrize("kernel", ["linear + RBF", "linear + Matérn 3/2", "linear + RQ",
+                                    "linear + RBF + semanal"])
+def test_every_kernel_fits_and_gives_ordered_intervals(kernel):
+    from w8t.forecasting.gpr import GPR
+
+    rng = np.random.default_rng(10)
+    s, _ = noisy_line(60, rng, missing=0.15)
+    fc = GPR(kernel, 60).fit(s).predict([1, 7, 30])
+
+    assert np.isfinite(fc.mean).all()
+    assert (fc.lower < fc.mean).all() and (fc.mean < fc.upper).all()
+
+
+def test_weekly_kernel_separates_weekly_pattern_from_noise():
+    from w8t.forecasting.gpr import GPR
+
+    rng = np.random.default_rng(11)
+    d = np.arange(90)
+    y = 80 + np.where(d % 7 < 2, 0.6, 0.0) + rng.normal(0, 0.25, 90)
+    s = series_from(y)
+    plain = GPR("linear + RBF", 90).fit(s)
+    weekly = GPR("linear + RBF + semanal", 90).fit(s)
+
+    # Without a periodic term the weekend bump is absorbed as extra "noise".
+    assert weekly.noise_sd < plain.noise_sd
+    assert weekly.noise_sd == pytest.approx(0.25, abs=0.08)

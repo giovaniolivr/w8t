@@ -575,6 +575,23 @@ Feito:
   - Testes novos em `tests/test_patterns_kalman.py` (detecta só quando existe, amplitude, não
     tenta em série curta, detectores com modelo semanal) e `tests/test_home_page.py` (aviso).
 
+- **GPR revisitado sem viés de seleção (fine-tuning, item 2 de 3) — completo (2026-09-24).**
+  - `forecasting/gpr.py`: `GPR(kernel, window_days)` com `KERNELS` = linear + {RBF, Matérn 3/2,
+    RQ, RBF + periódico fixo de 7 dias}; `GPRLinearRBF` mantido como alias da variante antiga.
+    O termo de ruído é sempre a última parcela (`kernel_.k2`).
+  - **Protocolo:** seleção em 18 séries *reservadas* (sementes 100-102, nunca usadas no
+    benchmark), confirmação nas 30 do benchmark padrão (sementes 0-4) com Wilcoxon pareado.
+    Detalhes e tabelas em `docs/gpr_selection.md`.
+  - **Resultado:** vencedora linear + Matérn 3/2, 90 dias (MAE médio 0,492 vs 0,526 da antiga
+    na seleção). Confirmação: menor MAE em todos os horizontes (h=30 0,738 vs 0,762; cobertura
+    85% vs 82%), **mas não significativo** (p 0,27-0,38). Mesmo trade-off de regime (ganha em
+    tendência contínua, perde após viradas). Kernel periódico semanal não ajudou no agregado.
+    Adotada no `registry.all_models()`; segue atrás do Kalman e da combinação (recomendada).
+  - Achado: numa série plana, RBF/Matérn/RQ colapsam no mesmo modelo (amplitude do componente
+    local → 0, sobra reta + ruído); diferenças só aparecem com dinâmica.
+  - Testes novos em `tests/test_gpr.py` (kernel inválido, nome público da variante antiga,
+    todo kernel ajusta com intervalo ordenado, kernel semanal separa padrão de ruído).
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -584,9 +601,11 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (fine-tuning, ordem combinada com o usuário em 2026-09-24): (2) revisitar o GPR
-com seleção de kernel pelo benchmark multi-série (não pela demo) → seguir ajustando os modelos até
-o produto estar "bem amarrado" → só então polimento de UI (animações/CSS) e deploy da demo.
+Próximo passo (fine-tuning, continuar "até o produto estar bem amarrado", decidido com o
+usuário em 2026-09-24): candidatos — (a) tendência logo após viradas de regime (fraqueza comum a
+Kalman/GPR com janelas longas; ex.: detecção de mudança de regime ou janela adaptativa);
+(b) calibração da cobertura em h=30 dos modelos individuais; (c) custo do backtesting na página
+(~20 s + Kalman semanal). Depois: polimento de UI (animações/CSS) e deploy da demo.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
