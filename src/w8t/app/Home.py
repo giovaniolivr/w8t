@@ -87,8 +87,8 @@ c1, c2, c3, c4 = st.columns(4)
 c1.metric("Peso atual", _kg(summary.current_kg), f"{summary.change_kg:+.1f} kg no escopo",
           delta_color="off", help=f"Última medição, em {_d(summary.last_date)}.")
 c2.metric("Peso inicial", _kg(summary.initial_kg), help=f"Primeira medição, em {_d(summary.first_date)}.")
-c3.metric("Mínimo", _kg(summary.min_kg), _d(summary.min_date), delta_color="off")
-c4.metric("Máximo", _kg(summary.max_kg), _d(summary.max_date), delta_color="off")
+c3.metric("Mínimo", _kg(summary.min_kg), _d(summary.min_date), delta_color="off", delta_arrow="off")
+c4.metric("Máximo", _kg(summary.max_kg), _d(summary.max_date), delta_color="off", delta_arrow="off")
 
 c5, c6, c7, c8 = st.columns(4)
 c5.metric("Variação", f"{summary.change_kg:+.1f} kg", f"{summary.change_pct:+.1f}%", delta_color="off")
@@ -110,7 +110,7 @@ if period is not None and period.target_weight_kg is not None:
     remaining = period.target_weight_kg - summary.current_kg
     st.caption(
         f"Meta do período: **{period.target_weight_kg:.1f} kg** · "
-        f"faltam **{remaining:+.1f} kg** em relação à última medição."
+        f"diferença até a meta: **{remaining:+.1f} kg** a partir da última medição."
     )
 
 st.caption(
@@ -147,6 +147,7 @@ else:
         f"(IC95% {current_trend.ci_low_kg_per_week:+.2f} a "
         f"{current_trend.ci_high_kg_per_week:+.2f})",
         delta_color="off",
+        delta_arrow="off",  # the direction is the value itself; an arrow could contradict it
         help=(
             "Reta de mínimos quadrados sobre as medições da janela. Só indica direção quando o "
             "intervalo de confiança de 95% exclui zero e a inclinação passa de "
@@ -226,6 +227,7 @@ if plateaus:
             }
         ),
         hide_index=True,
+        column_config={"Peso médio (kg)": st.column_config.NumberColumn(format="%.1f")},
     )
     st.caption(
         "Platô é estabilidade do peso, não um julgamento: em manutenção é o esperado; em perda "
@@ -244,4 +246,9 @@ if not flagged.empty:
             }
         ),
         hide_index=True,
+        column_config={
+            "Peso (kg)": st.column_config.NumberColumn(format="%.1f"),
+            "Esperado pela tendência (kg)": st.column_config.NumberColumn(format="%.1f"),
+            "z robusto": st.column_config.NumberColumn(format="%+.1f"),
+        },
     )
