@@ -3,15 +3,16 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
+from w8t.app import ui
 from w8t.data import periods
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
 
-st.set_page_config(page_title="W8T · Períodos", page_icon=":dart:", layout="wide")
-st.title("Períodos")
-st.caption(
-    "Opcional: agrupe seu histórico em ciclos com objetivos distintos (cutting, bulk, "
-    "manutenção...) para que as análises futuras considerem o contexto de cada fase."
+ui.setup("Períodos")
+ui.header(
+    "Períodos",
+    "Cada fase com seu objetivo — perda, ganho ou manutenção. Todo registro de peso pertence a "
+    "um período, e as análises respeitam essas fronteiras.",
 )
 
 DIRECTION_LABELS = {
@@ -21,6 +22,47 @@ DIRECTION_LABELS = {
 }
 DIRECTION_BY_LABEL = {v: k for k, v in DIRECTION_LABELS.items()}
 
+
+def _fmt(d: date) -> str:
+    return d.strftime("%d/%m/%Y")
+
+
+if "flash" in st.session_state:
+    st.success(st.session_state.pop("flash"))
+
+# --- entries that belong to no period ---------------------------------------------------------
+with get_session() as session:
+    loose = periods.uncovered_entries(session)
+    candidates = []
+    for p in periods.list_periods(session):
+        start, end = periods.attachable_range(session, p)
+        covered = [e for e in loose if start <= e.entry_date <= (end or date.max)]
+        if covered:
+            candidates.append((p, start, end, len(covered)))
+
+if loose:
+    ui.callout(
+        f"{len(loose)} registro(s) sem período",
+        f"De {_fmt(loose[0].entry_date)} a {_fmt(loose[-1].entry_date)}. Vincule-os a um período "
+        "existente (as datas dele são estendidas para incluí-los) ou crie um período para eles.",
+    )
+    for p, start, end, n in candidates:
+        span = f"{_fmt(start)} → {_fmt(end) if end else 'em andamento'}"
+        if st.button(f"Vincular {n} registro(s) a '{p.label}' ({span})", key=f"attach_{p.id}",
+                     type="primary"):
+            with get_session() as session:
+                try:
+                    attached = periods.attach_uncovered(session, p.id)
+                    st.session_state["flash"] = f"{attached} registro(s) vinculados a '{p.label}'."
+                except periods.OverlappingPeriodError as exc:
+                    st.session_state["flash"] = str(exc)
+            st.rerun()
+    if not candidates:
+        st.caption("Nenhum período vizinho pode ser estendido sem sobrepor outro — crie um abaixo.")
+    if st.button("Criar período para esses registros", key="prefill_loose"):
+        st.session_state["new_period_start"] = loose[0].entry_date  # fixed-key widget state
+        st.rerun()
+
 st.subheader("Novo período")
 
 with st.form("new_period_form", clear_on_submit=True):
@@ -29,7 +71,7 @@ with st.form("new_period_form", clear_on_submit=True):
     direction_label = col2.selectbox("Objetivo", list(DIRECTION_LABELS.values()))
 
     col3, col4, col5 = st.columns(3)
-    start_date = col3.date_input("Início", value=date.today())
+    start_date = col3.date_input("Início", value=date.today(), key="new_period_start")
     ongoing = col4.checkbox("Período em andamento (sem data de fim)", value=True)
     end_date = None if ongoing else col5.date_input("Fim", value=date.today())
 
@@ -40,7 +82,7 @@ with st.form("new_period_form", clear_on_submit=True):
         else None
     )
 
-    submitted = st.form_submit_button("Salvar")
+    submitted = st.form_submit_button("Salvar", type="primary")
 
 if submitted:
     if not label.strip():
@@ -67,7 +109,7 @@ with get_session() as session:
     all_periods = periods.list_periods(session, ascending=False)
 
 if not all_periods:
-    st.info("Nenhum período cadastrado ainda. O histórico continua funcionando normalmente sem eles.")
+    st.info("Nenhum período cadastrado ainda. Ao registrar o primeiro peso você define o objetivo.")
 else:
     rows = [
         {
@@ -80,7 +122,7 @@ else:
         }
         for p in all_periods
     ]
-    st.dataframe(pd.DataFrame(rows).set_index("id"), use_container_width=True)
+    st.dataframe(pd.DataFrame(rows).set_index("id"), width="stretch")
 
     st.subheader("Editar ou excluir")
     options = {f"{p.label} ({p.start_date.strftime('%d/%m/%Y')})": p.id for p in all_periods}

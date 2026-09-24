@@ -1,10 +1,10 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from w8t.app import theme
+from w8t.app import theme, ui
 from w8t.config import settings
 from w8t.core import anomaly, metrics, plateau, trend
 from w8t.data import demo, repository
@@ -12,7 +12,7 @@ from w8t.data import periods as periods_repo
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
 from w8t.patterns import kalman as kal
-from w8t.patterns import pipeline
+from w8t.patterns import pipeline, regime
 
 GOAL_LABELS = {
     GoalDirection.LOSS: "perda",
@@ -21,13 +21,15 @@ GOAL_LABELS = {
 }
 FULL_HISTORY = "Histórico completo"
 
-st.set_page_config(page_title="W8T", page_icon=":chart_with_downwards_trend:", layout="wide")
-
-st.title("W8T")
-st.caption(
-    f"Acompanhamento inteligente de peso — estatística e Machine Learning · modo "
-    f"**{settings.app_env}**"
+ui.setup("w8t")
+ui.header(
+    "Dashboard",
+    "Acompanhamento inteligente de peso — estatística e Machine Learning"
+    + ("" if not settings.is_demo else " · modo demonstração"),
 )
+
+if "flash" in st.session_state:
+    st.success(st.session_state.pop("flash"))
 
 if settings.is_demo:
     st.warning(
@@ -61,7 +63,17 @@ def _period_option(p) -> str:
 
 
 options = {FULL_HISTORY: None} | {_period_option(p): p for p in reversed(all_periods)}
-choice = st.selectbox("Escopo", list(options), help="Analisar o histórico inteiro ou um período.")
+# Open on the period of the latest entry: periods are the user's regime boundaries, so the
+# current phase is the natural default; the full history is one click away.
+latest = full_series.index[-1].date()
+active = next(
+    (p for p in all_periods if p.start_date <= latest <= (p.end_date or date.max)), None
+)
+default_index = list(options.values()).index(active) if active is not None else 0
+choice = st.selectbox(
+    "Escopo", list(options), index=default_index,
+    help="Por padrão, o período atual. Também dá para ver o histórico inteiro ou outro período.",
+)
 period = options[choice]
 
 if period is None:
@@ -85,6 +97,27 @@ def _d(value: date) -> str:
     return value.strftime("%d/%m/%Y")
 
 
+@st.dialog("Começar um novo período")
+def _switch_period_dialog(current, suggested):
+    st.write(
+        f"O período **{current.label}** será encerrado no dia anterior ao início do novo. "
+        "Os registros continuam onde estão — só as datas dos períodos mudam."
+    )
+    goals = list(GOAL_LABELS)
+    goal = st.radio("Novo objetivo", goals, index=goals.index(suggested),
+                    format_func=lambda g: GOAL_LABELS[g].capitalize(), horizontal=True)
+    start = st.date_input("Início do novo período", value=date.today(),
+                          min_value=current.start_date + timedelta(days=1), max_value=date.today())
+    label = st.text_input("Nome", value=f"{GOAL_LABELS[goal].capitalize()} desde {_d(start)}")
+    if st.button("Confirmar", type="primary"):
+        with get_session() as session:
+            periods_repo.update_period(session, current.id, end_date=start - timedelta(days=1))
+            periods_repo.create_period(session, label=label, goal_direction=goal,
+                                       start_date=start)
+        st.session_state["flash"] = f"Período '{label}' iniciado."
+        st.rerun()
+
+
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Peso atual", _kg(summary.current_kg), f"{summary.change_kg:+.1f} kg no escopo",
           delta_color="off", help=f"Última medição, em {_d(summary.last_date)}.")
@@ -95,9 +128,9 @@ c4.metric("Máximo", _kg(summary.max_kg), _d(summary.max_date), delta_color="off
 c5, c6, c7, c8 = st.columns(4)
 c5.metric("Variação", f"{summary.change_kg:+.1f} kg", f"{summary.change_pct:+.1f}%", delta_color="off")
 c6.metric(
-    "Ritmo",
+    "Ritmo (kg/sem)",
     "dados insuficientes" if summary.pace_kg_per_week is None
-    else f"{summary.pace_kg_per_week:+.2f} kg/sem",
+    else f"{summary.pace_kg_per_week:+.2f}",
     help=(
         "Inclinação da reta de mínimos quadrados sobre as medições do escopo. "
         f"Exige ≥ {metrics.PACE_MIN_ENTRIES} medições cobrindo ≥ {metrics.PACE_MIN_SPAN_DAYS} dias."
@@ -131,6 +164,24 @@ _p = _patterns(series)
 method, current_trend, trend_method = _p.method, _p.trend, _p.trend_method
 plateaus, anomalies, states = _p.plateaus, _p.anomalies, _p.states
 flagged = anomalies[anomalies["is_anomaly"]]
+
+suggestion = regime.suggested_goal(period, current_trend) if period is active else None
+if suggestion is not None and st.session_state.get("dismissed_suggestion") != period.id:
+    arrow = "subir" if suggestion is GoalDirection.GAIN else "cair"
+    ui.callout(
+        f"O peso começou a {arrow}",
+        f"O período <em>{period.label}</em> tem objetivo de {GOAL_LABELS[period.goal_direction]}, "
+        f"mas a tendência recente é de {GOAL_LABELS[suggestion]} "
+        f"({current_trend.slope_kg_per_week:+.2f} kg/sem, IC95% "
+        f"{current_trend.ci_low_kg_per_week:+.2f} a {current_trend.ci_high_kg_per_week:+.2f}). "
+        "Se uma nova fase começou, dá para encerrar este período e iniciar outro — ou ignorar.",
+    )
+    s1, s2, _ = st.columns([1, 1, 3])
+    if s1.button("Iniciar novo período", type="primary"):
+        _switch_period_dialog(period, suggestion)
+    if s2.button("Ignorar"):
+        st.session_state["dismissed_suggestion"] = period.id
+        st.rerun()
 
 st.subheader("Padrões")
 t1, t2, t3 = st.columns(3)
@@ -227,11 +278,8 @@ if not flagged.empty:
 if period is not None and period.target_weight_kg is not None:
     fig.add_hline(y=period.target_weight_kg, line_dash="dot", line_color=theme.TARGET,
                   annotation_text="meta")
-fig.update_layout(
-    height=420, margin={"l": 10, "r": 10, "t": 30, "b": 10},
-    yaxis_title="kg", legend={"orientation": "h", "y": 1.08},
-)
-st.plotly_chart(fig, width="stretch")
+theme.style_figure(fig, height=480)
+st.plotly_chart(fig, width="stretch", config=theme.PLOTLY_CONFIG)
 st.caption(
     "Pontos cinza são medições registradas. "
     + ("A linha verde contínua é a tendência estimada pelo modelo (estado suavizado do filtro "

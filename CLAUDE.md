@@ -96,8 +96,10 @@ via backtesting antes de qualquer versão baseada em GPR — para poder aplicar 
 - Testes: `tests/test_periods.py` (overlap, período em andamento bloqueando qualquer início
   posterior, update reabrindo período, `get_period_for_date`) e `tests/test_periodos_page.py`
   (AppTest, incluindo o caso de sobreposição rejeitada na UI).
-- **Opcional por design**: app continua funcionando sem nenhum período definido (spec item 32) —
-  coberto pelo teste `test_page_loads_with_no_periods`.
+- ~~Opcional por design~~ → **mudou em 2026-09-24 (decisão do usuário): todo registro pertence a
+  um período.** Os períodos são as fronteiras de regime definidas pelo usuário (virada de
+  cutting→bulk etc. não precisa ser detectada pelo modelo — o usuário a declara). Ver "Períodos
+  obrigatórios" em Estado atual. Associação continua por intervalo de datas (sem FK).
 - **Ainda não feito**: nenhuma tela hoje *usa* `get_period_for_date` para escopar análises —
   isso só faz sentido a partir do dashboard (próximo passo).
 
@@ -591,6 +593,44 @@ Feito:
     local → 0, sobra reta + ruído); diferenças só aparecem com dinâmica.
   - Testes novos em `tests/test_gpr.py` (kernel inválido, nome público da variante antiga,
     todo kernel ajusta com intervalo ordenado, kernel semanal separa padrão de ruído).
+
+- **Períodos obrigatórios + interface nova (2026-09-24).**
+  - Regra: todo registro pertence a um período. `data/periods.py`: `uncovered_entries`,
+    `attachable_range` (quanto um período precisaria se estender para cobrir os registros soltos
+    vizinhos, sem atravessar outro período), `attach_uncovered`, `start_including_uncovered`
+    (período novo recua até o primeiro registro solto desde o último período).
+  - Registro de peso: se a data não pertence a nenhum período, **antes de salvar** pede objetivo
+    (perder/ganhar/manter), nome e "até quando" (data planejada ou sem data) — cria o período
+    (absorvendo registros soltos anteriores) e então salva. Cancelar descarta. Histórico mostra a
+    coluna Período.
+  - Períodos: painel para registros sem período (caso real do usuário: registrou uma semana e só
+    depois criou o período) com "Vincular N registro(s) a '<período>'" (estende as datas) e
+    "Criar período para esses registros" (pré-preenche o início; widget com `key` fixa — valor
+    padrão variável recria o widget e perderia a escolha).
+  - `patterns/regime.py`: `suggested_goal(period, trend)` — só para período **sem data de fim**,
+    só quando o detector de tendência declara direção (IC exclui 0 e |ritmo| ≥ 0,25 kg/sem)
+    **oposta** ao objetivo (perda↔subindo, ganho↔descendo, manutenção↔qualquer direção). Platô
+    ("estável") numa perda/ganho não dispara. Dashboard mostra o cartão "O peso começou a
+    subir/cair" com "Iniciar novo período" (`st.dialog`: encerra o atual no dia anterior ao
+    início do novo e cria o novo) ou "Ignorar".
+  - Dashboard abre no **período atual** (o que contém o último registro); histórico completo
+    continua no seletor.
+  - UI (`app/ui.py`, usado por todas as páginas): CSS global (fonte Inter só em texto — aplicar a
+    todos os elementos quebrava a fonte de ícones do Streamlit e aparecia "keyboard_double..."),
+    fundo com brilho verde, cartões com sombra/borda e elevação ao passar o mouse (métricas,
+    gráficos, tabelas, formulários), animações de entrada escalonadas, botões com gradiente,
+    painel de destaque `ui.callout`, respeita `prefers-reduced-motion`. **Logo** `static/logo.svg`
+    ("w" #374151, "8" #22C55E, "t" #0A0A0A) sobre plaquinha clara — um "t" preto sobre o fundo
+    preto do app seria invisível. É um link HTML comum (`target="_self"`) fixado no topo da
+    sidebar: o link do `st.logo` **sempre abre nova aba** (handler de clique próprio; remover
+    `target` via JS não resolveu — verificado no navegador).
+  - Gráficos (`theme.style_figure` + `theme.PLOTLY_CONFIG`): hover unificado com linha-guia,
+    botões 7d/1m/3m/6m/tudo, mini-régua de navegação (dashboard), zoom na roda do mouse,
+    transições, exportar PNG.
+  - Testes: `tests/test_period_coverage.py` (13), casos novos em `test_registro_de_peso_page.py`
+    (pede objetivo sem período, absorve soltos, cancelar), `test_periodos_page.py` (vincular,
+    pré-preencher) e `test_home_page.py` (abre no período atual, sugestão na virada, ignorar,
+    sem sugestão quando alinhado). 216 testes.
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar

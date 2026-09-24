@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from w8t.data.models import GoalDirection, Period
+from w8t.data.models import GoalDirection, Period, WeightEntry
 
 _MAX_DATE = date.max
 
@@ -125,3 +125,68 @@ def delete_period(session: Session, period_id: int) -> None:
     period = get_period(session, period_id)
     session.delete(period)
     session.flush()
+
+
+# --- every entry belongs to a period ---------------------------------------------------------
+# Product rule (2026-09-24): a weight entry should always fall inside some period - the period's
+# goal is what gives the entry analytical context (and user-defined periods are the regime
+# boundaries the models respect). Association stays by date range, so "attaching" entries means
+# widening a period's dates, never a foreign key.
+
+
+def uncovered_entries(session: Session) -> list[WeightEntry]:
+    """Entries whose date falls inside no period (e.g. logged before any period existed)."""
+    all_periods = list_periods(session)
+    stmt = select(WeightEntry).order_by(WeightEntry.entry_date.asc())
+    return [
+        e
+        for e in session.scalars(stmt)
+        if not any(p.start_date <= e.entry_date <= (p.end_date or _MAX_DATE) for p in all_periods)
+    ]
+
+
+def attachable_range(session: Session, period: Period) -> tuple[date, date | None]:
+    """The (start, end) ``period`` would need to cover the uncovered entries adjacent to it -
+    those between it and its neighbouring periods. Returns its current range if none."""
+    others = [p for p in list_periods(session) if p.id != period.id]
+    prev_end = max(
+        (p.end_date for p in others if p.end_date is not None and p.end_date < period.start_date),
+        default=date.min,
+    )
+    next_start = min(
+        (p.start_date for p in others if p.start_date > (period.end_date or _MAX_DATE)),
+        default=_MAX_DATE,
+    )
+    loose = uncovered_entries(session)
+    before = [e.entry_date for e in loose if prev_end < e.entry_date < period.start_date]
+    after = [
+        e.entry_date
+        for e in loose
+        if period.end_date is not None and period.end_date < e.entry_date < next_start
+    ]
+    start = min(before, default=period.start_date)
+    end = max(after, default=period.end_date) if period.end_date is not None else None
+    return start, end
+
+
+def attach_uncovered(session: Session, period_id: int) -> int:
+    """Widen the period to include the uncovered entries adjacent to it. Returns how many."""
+    period = get_period(session, period_id)
+    before = len(uncovered_entries(session))
+    start, end = attachable_range(session, period)
+    if (start, end) != (period.start_date, period.end_date):
+        update_period(session, period_id, start_date=start, end_date=end)
+    return before - len(uncovered_entries(session))
+
+
+def start_including_uncovered(session: Session, entry_date: date) -> date:
+    """Start date for a *new* period created for ``entry_date``: reaches back to the earliest
+    uncovered entry since the last period before it, so earlier loose entries get included."""
+    prev_end = max(
+        (p.end_date for p in list_periods(session)
+         if p.end_date is not None and p.end_date < entry_date),
+        default=date.min,
+    )
+    earlier = [e.entry_date for e in uncovered_entries(session)
+               if prev_end < e.entry_date <= entry_date]
+    return min([*earlier, entry_date])

@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from w8t.app import theme
+from w8t.app import theme, ui
 from w8t.core import metrics
 from w8t.data import repository
 from w8t.data.db import get_session
@@ -15,12 +15,11 @@ METHOD_LABELS = {
     "linear": "Interpolação linear (referência)",
 }
 
-st.set_page_config(page_title="W8T · Lacunas", page_icon=":jigsaw:", layout="wide")
-st.title("Lacunas")
-st.caption(
-    "Dias sem registro ficam sem registro. Se quiser, escolha uma lacuna e peça uma estimativa do "
-    "que a balança provavelmente mostraria — ela é calculada na hora, exibida como estimativa e "
-    "**nunca é salva** junto com as medições."
+ui.setup("Lacunas")
+ui.header(
+    "Lacunas",
+    "Dias sem registro ficam sem registro. Se quiser, peça uma estimativa do que a balança "
+    "provavelmente mostraria — calculada na hora e nunca salva junto com as medições.",
 )
 
 with get_session() as session:
@@ -81,9 +80,8 @@ fig.add_trace(go.Scatter(
 ))
 fig.add_vrect(x0=gap.start, x1=gap.end, fillcolor=theme.PLATEAU_FILL, line_width=0,
               layer="below", annotation_text="lacuna", annotation_position="top left")
-fig.update_layout(height=380, margin={"l": 10, "r": 10, "t": 30, "b": 10}, yaxis_title="kg",
-                  legend={"orientation": "h", "y": 1.1})
-st.plotly_chart(fig, width="stretch")
+theme.style_figure(fig, height=400, range_slider=False)
+st.plotly_chart(fig, width="stretch", config=theme.PLOTLY_CONFIG)
 
 st.dataframe(
     pd.DataFrame(

@@ -2,6 +2,7 @@ from datetime import date
 
 import streamlit as st
 
+from w8t.app import ui
 from w8t.config import settings
 from w8t.core import metrics
 from w8t.data import periods as periods_repo
@@ -12,12 +13,11 @@ from w8t.insights.summary import GOALS, build_summary
 
 FULL_HISTORY = "Histórico completo"
 
-st.set_page_config(page_title="W8T · Resumo", page_icon=":memo:", layout="wide")
-st.title("Resumo em linguagem natural")
-st.caption(
+ui.setup("Resumo")
+ui.header(
+    "Resumo em linguagem natural",
     "Um modelo de linguagem transforma em texto os números que as outras análises já "
-    "calcularam. Ele não recebe suas medições brutas, não calcula nada por conta própria e é "
-    "instruído a não sugerir causas nem dar conselhos."
+    "calcularam — sem receber suas medições brutas, sem calcular nada e sem sugerir causas.",
 )
 
 with get_session() as session:

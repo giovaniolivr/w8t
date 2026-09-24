@@ -54,7 +54,7 @@ def test_home_shows_kpis_for_full_history(app):
     assert not at.exception
     assert _metric(at, "Peso atual").value == "89.2 kg"
     assert _metric(at, "Peso inicial").value == "90.0 kg"
-    assert _metric(at, "Ritmo").value == "-0.70 kg/sem"
+    assert _metric(at, "Ritmo (kg/sem)").value == "-0.70"
     assert _metric(at, "Média móvel 30 dias").value == "dados insuficientes"
 
 
@@ -169,3 +169,44 @@ def test_weekly_pattern_is_announced(app):
 
     assert not at.exception
     assert any("Padrão semanal detectado" in c.value for c in at.caption)
+
+
+def _seed_reversal(goal):
+    """70 days losing, then 40 days clearly gaining, inside one open-ended period."""
+    rng = np.random.default_rng(3)
+    start = TODAY - timedelta(days=109)
+    with db_module.get_session() as session:
+        for i in range(110):
+            w = 90 - 0.1 * i if i < 70 else 83 + 0.12 * (i - 70)
+            repository.create_entry(
+                session, entry_date=start + timedelta(days=i),
+                weight_kg=round(w + rng.normal(0, 0.2), 1),
+            )
+        periods.create_period(session, label="Fase", goal_direction=goal, start_date=start)
+
+
+def test_dashboard_opens_on_the_current_period(app):
+    _seed_reversal(GoalDirection.GAIN)
+    at = app.run()
+
+    assert not at.exception
+    assert at.selectbox[0].value.startswith("Fase")
+
+
+def test_reversal_against_goal_suggests_a_new_period(app):
+    _seed_reversal(GoalDirection.LOSS)
+    at = app.run()
+
+    assert not at.exception
+    assert any("O peso começou a subir" in m.value for m in at.markdown)
+    assert any(b.label == "Iniciar novo período" for b in at.button)
+
+    next(b for b in at.button if b.label == "Ignorar").click().run()
+    assert not any("O peso começou a subir" in m.value for m in at.markdown)
+
+
+def test_no_suggestion_when_trend_matches_goal(app):
+    _seed_reversal(GoalDirection.GAIN)
+    at = app.run()
+
+    assert not any("O peso começou" in m.value for m in at.markdown)

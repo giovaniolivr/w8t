@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 52" width="132" height="52">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F9FAFB"/>
+      <stop offset="1" stop-color="#D9DEDB"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect x="3" y="3" width="126" height="44" rx="12" fill="url(#plate)" filter="url(#shadow)"/>
+  <text x="66" y="37" text-anchor="middle"
+        font-family="Inter, 'Segoe UI', Arial, sans-serif" font-size="32" font-weight="800"
+        letter-spacing="1">
+    <tspan fill="#374151">w</tspan><tspan fill="#22C55E">8</tspan><tspan fill="#0A0A0A">t</tspan>
+  </text>
+</svg>

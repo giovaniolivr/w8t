@@ -2,7 +2,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from w8t.app import theme
+from w8t.app import theme, ui
 from w8t.core import metrics
 from w8t.data import repository
 from w8t.data.db import get_session
@@ -22,11 +22,11 @@ HISTORY_SHOWN_DAYS = 60
 # with 6 models (cached per series afterwards).
 BACKTEST_STEP_DAYS = 2
 
-st.set_page_config(page_title="W8T · Previsão", page_icon=":crystal_ball:", layout="wide")
-st.title("Previsão")
-st.caption(
-    "Cada modelo é avaliado contra o seu próprio histórico (backtesting walk-forward) antes de "
-    "qualquer previsão ser exibida. Previsão é estimativa com incerteza, nunca certeza."
+ui.setup("Previsão")
+ui.header(
+    "Previsão",
+    "Cada modelo é avaliado contra o seu próprio histórico (backtesting walk-forward) antes "
+    "de qualquer previsão ser exibida. Previsão é estimativa com incerteza, nunca certeza.",
 )
 
 with get_session() as session:
@@ -179,11 +179,8 @@ fig.add_trace(go.Scatter(x=fc.index, y=fc["lower"], mode="lines", line={"width":
                          name=f"Intervalo {forecast.level:.0%}", hoverinfo="skip"))
 fig.add_trace(go.Scatter(x=fc.index, y=fc["mean"], mode="lines", name="Previsão",
                          line={"color": theme.FORECAST, "dash": "dash", "width": 2.5}))
-fig.update_layout(
-    height=420, margin={"l": 10, "r": 10, "t": 30, "b": 10},
-    yaxis_title="kg", legend={"orientation": "h", "y": 1.08},
-)
-st.plotly_chart(fig, width="stretch")
+theme.style_figure(fig, height=440, range_slider=False)
+st.plotly_chart(fig, width="stretch", config=theme.PLOTLY_CONFIG)
 
 key_rows = fc[fc["horizon_days"].isin(DEFAULT_HORIZONS)]
 st.dataframe(

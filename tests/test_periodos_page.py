@@ -58,3 +58,45 @@ def test_overlapping_period_is_rejected_in_ui(app):
 
     assert not at.exception
     assert "Sobrepõe o período existente" in at.error[0].value
+
+
+def test_loose_entries_can_be_attached_to_a_period(app):
+    from datetime import date, timedelta
+
+    from w8t.data import periods, repository
+    from w8t.data.models import GoalDirection
+
+    today = date.today()  # noqa: DTZ011
+    with db_module.get_session() as session:
+        for i in range(7, 14):  # a week logged before any period existed
+            repository.create_entry(session, entry_date=today - timedelta(days=i), weight_kg=80.0)
+        periods.create_period(
+            session, label="Cut", goal_direction=GoalDirection.LOSS,
+            start_date=today - timedelta(days=6),
+        )
+
+    at = app.run()
+    assert any("7 registro(s) sem período" in m.value for m in at.markdown)
+
+    next(b for b in at.button if b.label.startswith("Vincular 7 registro(s) a 'Cut'")).click().run()
+
+    assert not at.exception
+    assert "7 registro(s) vinculados" in at.success[0].value
+    with db_module.get_session() as session:
+        assert periods.uncovered_entries(session) == []
+
+
+def test_prefill_for_loose_entries_sets_start_date(app):
+    from datetime import date, timedelta
+
+    from w8t.data import repository
+
+    first = date.today() - timedelta(days=20)  # noqa: DTZ011
+    with db_module.get_session() as session:
+        repository.create_entry(session, entry_date=first, weight_kg=80.0)
+
+    at = app.run()
+    next(b for b in at.button if b.label == "Criar período para esses registros").click().run()
+
+    assert not at.exception
+    assert at.date_input(key="new_period_start").value == first
