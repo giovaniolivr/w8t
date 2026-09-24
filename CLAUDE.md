@@ -177,7 +177,7 @@ GitHub para os quadrados verdes contarem.
 ## Estado atual
 
 Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia, backtesting) + forecasting engine (baselines + Holt amortecido) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+tendência/platô/anomalia, backtesting) + forecasting engine (baselines + Holt amortecido + Kalman) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -323,6 +323,31 @@ Feito:
   - Custo: backtesting passo 1 dia com 4 modelos na demo ~10 s (cacheado por série) — observar
     quando entrarem Kalman/GPR.
 
+- **Kalman — tendência suave (roadmap passo 4) — completo (2026-09-24).**
+  - `src/w8t/forecasting/kalman.py`: `KalmanSmoothTrend` = `UnobservedComponents(level="strend")`
+    sobre grade diária com NaN nos dias faltantes (Kalman trata nativamente — **verificado**
+    antes de usar, após o problema do ETS). Intervalo de `get_forecast` inclui o ruído de
+    medição (é intervalo para uma medição futura, comparável aos demais). Só o *filter* é usado
+    para previsão/backtesting. Expõe `noise_sd` (dp do ruído) e `slope_change_sd`
+    (volatilidade do ritmo) — a parte interpretável.
+  - **Escolha strend vs. lltrend (local linear trend):** na demo mesma log-verossimilhança
+    (−68,4; variância própria do nível estimada ≈ 0), AIC melhor (140,8 vs 142,7) e ~6x mais
+    rápido (0,07 s vs 0,41 s por ajuste) — relevante porque o backtesting reajusta a cada origem.
+  - **Armadilha de convergência:** L-BFGS reporta "não convergiu" quando o ótimo está na
+    fronteira (`sigma2.trend` → 0, tendência determinística) — 4 origens da demo eram
+    descartadas sem motivo. Powell/Nelder-Mead chegam à mesma verossimilhança e parâmetros e
+    reportam convergência, então há fallback para Powell; só se ainda assim falhar vira
+    `InsufficientDataError`.
+  - Testes: `tests/test_kalman.py` (gate, ajuste com 30% de dias faltando sem preencher,
+    recupera dp do ruído no próprio processo, intervalo h=1 ≥ ruído, cobertura ~95% com gaps,
+    ótimo de fronteira aceito). Registrado em `all_models()`.
+  - **Resultado na demo (mesmos casos):** MAE empata com Holt em todos os horizontes (h=30:
+    0,794 vs 0,793), mas cobertura h=30 de 80% com viés +0,43 (Holt: 94%, −0,03) — tendência
+    não amortecida extrapola a perda para dentro do platô, mesma falha da regressão. Veredito:
+    **não supera o Holt como previsor**; seu valor aqui é interpretativo (ruído estimado
+    0,34 kg vs 0,35 real da demo) e o *smoother* para descrição do passado / reconstrução de
+    gaps. Backtesting na página agora ~17 s no primeiro carregamento (cacheado).
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -332,18 +357,22 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): Kalman — `statsmodels.tsa.UnobservedComponents` (local linear
-trend), que aceita NaN nativamente (confirmar, dado o que aconteceu com ETS). *Filter* para
-previsão/backtesting; *smoother* reservado para exibição descritiva do passado. Critério: bater o
-Holt amortecido em MAE/cobertura nos mesmos casos, ou justificar pela interpretabilidade
-(variâncias de nível/tendência/ruído explícitas).
+Próximo passo (não iniciado): GPR (`scikit-learn` `GaussianProcessRegressor`) — kernel com
+componente de tendência suave + ruído branco (WhiteKernel) para o intervalo ser de medição.
+Dia faltante simplesmente não entra no treino (GPR é contínuo no tempo). Atenção a custo
+(O(n³)) no backtesting e a extrapolação: kernels estacionários revertem à média longe dos dados,
+o que pode ser bom (tipo amortecimento) ou ruim — o backtesting decide. Critério: comparar com
+Holt amortecido (atual melhor) nos mesmos casos.
+
+Oportunidade registrada: usar o *smoother* do Kalman no dashboard como a categoria "estado
+filtrado-suavizado" (tendência subjacente com banda), claramente distinto das medições.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
-baselines de tendência/platô/anomalia, forecasting baselines e backtesting e Holt já feitos) →
-Kalman → GPR (itens 6, 11-14) → revisão opcional de
+baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt e Kalman já feitos) →
+GPR (itens 6, 11-14) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
 condicionada a viabilidade).
