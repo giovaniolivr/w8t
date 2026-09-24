@@ -13,3 +13,8 @@ MEASUREMENT = GRAY
 MOVING_AVG_SHORT = GREEN
 MOVING_AVG_LONG = GREEN_LIGHT
 TARGET = GRAY
+
+# Pattern annotations. Amber is the one deliberate off-palette color: an anomaly must stand out
+# from both the gray measurements and the green derived lines.
+ANOMALY = "#F59E0B"
+PLATEAU_FILL = "rgba(156, 163, 175, 0.12)"

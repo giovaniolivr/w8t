@@ -1,11 +1,12 @@
 from datetime import date
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from w8t.app import theme
 from w8t.config import settings
-from w8t.core import metrics
+from w8t.core import anomaly, metrics, plateau, trend
 from w8t.data import demo, repository
 from w8t.data import periods as periods_repo
 from w8t.data.db import get_session
@@ -116,6 +117,52 @@ st.caption(
     f"{summary.n_entries} medições em {summary.span_days + 1} dias de calendário."
 )
 
+
+
+@st.cache_data(show_spinner=False)
+def _patterns(scoped: pd.Series):
+    # Streamlit reruns the script on every interaction; detection is O(n * window) and only
+    # needs recomputing when the scoped series itself changes (cache key = series content).
+    return (
+        trend.current_trend(scoped),
+        plateau.detect_plateaus(scoped),
+        anomaly.detect_anomalies(scoped),
+    )
+
+
+current_trend, plateaus, anomalies = _patterns(series)
+flagged = anomalies[anomalies["is_anomaly"]]
+
+st.subheader("Padrões")
+t1, t2, t3 = st.columns(3)
+if current_trend is None:
+    t1.metric(f"Tendência ({trend.TREND_WINDOW_DAYS} dias)", "dados insuficientes",
+              help=f"Exige ≥ {trend.TREND_MIN_OBS} medições nos últimos "
+                   f"{trend.TREND_WINDOW_DAYS} dias do escopo.")
+else:
+    t1.metric(
+        f"Tendência ({trend.TREND_WINDOW_DAYS} dias)",
+        current_trend.direction.value,
+        f"{current_trend.slope_kg_per_week:+.2f} kg/sem "
+        f"(IC95% {current_trend.ci_low_kg_per_week:+.2f} a "
+        f"{current_trend.ci_high_kg_per_week:+.2f})",
+        delta_color="off",
+        help=(
+            "Reta de mínimos quadrados sobre as medições da janela. Só indica direção quando o "
+            "intervalo de confiança de 95% exclui zero e a inclinação passa de "
+            f"±{trend.STABLE_BAND_KG_PER_WEEK} kg/sem; \"estável\" quando o intervalo inteiro "
+            "fica dentro dessa faixa; \"indefinido\" quando o ruído não permite concluir."
+        ),
+    )
+t2.metric("Platôs detectados", len(plateaus),
+          help=f"Trechos de ≥ {plateau.PLATEAU_MIN_DAYS} dias em que a inclinação da janela de "
+               f"{plateau.PLATEAU_WINDOW_DAYS} dias ficou abaixo de "
+               f"±{plateau.PLATEAU_MAX_ABS_SLOPE_KG_PER_WEEK} kg/sem.")
+t3.metric("Medições atípicas", len(flagged),
+          help="Medições que se desviam da tendência das semanas anteriores além do esperado "
+               f"pelo ruído (|z robusto| ≥ {anomaly.ANOMALY_Z_THRESHOLD}). Atípico não significa "
+               "errado — a medição é mantida como registrada.")
+
 # Same scoped series as the KPI cards, so the chart's last MA point matches the card value.
 ma7 = metrics.rolling_mean(series, 7)
 ma30 = metrics.rolling_mean(series, 30)
@@ -129,6 +176,18 @@ fig.add_trace(go.Scatter(x=ma7.index, y=ma7, mode="lines", name="Média móvel 7
 fig.add_trace(go.Scatter(x=ma30.index, y=ma30, mode="lines", name="Média móvel 30d",
                          line={"color": theme.MOVING_AVG_LONG, "dash": "dash"},
                          connectgaps=False))
+for p in plateaus:
+    fig.add_vrect(x0=p.start, x1=p.end, fillcolor=theme.PLATEAU_FILL, line_width=0, layer="below",
+                  annotation_text="platô", annotation_position="top left")
+if not flagged.empty:
+    fig.add_trace(go.Scatter(
+        x=flagged.index, y=flagged["weight_kg"], mode="markers", name="Medição atípica",
+        marker={"size": 13, "color": "rgba(0,0,0,0)",
+                "line": {"color": theme.ANOMALY, "width": 2}},
+        customdata=flagged[["expected_kg", "robust_z"]],
+        hovertemplate="%{y:.1f} kg · esperado %{customdata[0]:.1f} kg · z %{customdata[1]:+.1f}"
+                      "<extra></extra>",
+    ))
 if period is not None and period.target_weight_kg is not None:
     fig.add_hline(y=period.target_weight_kg, line_dash="dot", line_color=theme.TARGET,
                   annotation_text="meta")
@@ -140,5 +199,49 @@ st.plotly_chart(fig, width="stretch")
 st.caption(
     "Pontos são medições registradas. Linhas são médias derivadas dessas medições — "
     "calculadas apenas quando há medições suficientes na janela; dias sem registro não são "
-    "preenchidos."
+    "preenchidos. Faixas cinza marcam platôs; círculos âmbar, medições atípicas."
 )
+
+
+def _periods_overlapping(start: date, end: date) -> str:
+    hits = [
+        f"{p.label} ({GOAL_LABELS[p.goal_direction]})"
+        for p in all_periods
+        if p.start_date <= end and start <= (p.end_date or date.max)
+    ]
+    return ", ".join(hits) or "—"
+
+
+if plateaus:
+    st.markdown("**Platôs**")
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Início": [_d(p.start) for p in plateaus],
+                "Fim": [_d(p.end) for p in plateaus],
+                "Dias": [p.days for p in plateaus],
+                "Medições": [p.n_obs for p in plateaus],
+                "Peso médio (kg)": [round(p.mean_kg, 1) for p in plateaus],
+                "Período(s)": [_periods_overlapping(p.start, p.end) for p in plateaus],
+            }
+        ),
+        hide_index=True,
+    )
+    st.caption(
+        "Platô é estabilidade do peso, não um julgamento: em manutenção é o esperado; em perda "
+        "ou ganho indica estagnação. O início é aproximado — a detecção usa janelas móveis."
+    )
+
+if not flagged.empty:
+    st.markdown("**Medições atípicas**")
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Data": [_d(ts.date()) for ts in flagged.index],
+                "Peso (kg)": flagged["weight_kg"].round(1).to_list(),
+                "Esperado pela tendência (kg)": flagged["expected_kg"].round(1).to_list(),
+                "z robusto": flagged["robust_z"].round(1).to_list(),
+            }
+        ),
+        hide_index=True,
+    )

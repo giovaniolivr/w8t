@@ -175,8 +175,8 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **itens 1 e 2 da spec concluídos** (registro diário de peso + dashboard) **+ `Period` no
-data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+Fase: **itens 1, 2 e 8-10 (baselines) da spec concluídos** (registro diário, dashboard,
+tendência/platô/anomalia) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -223,6 +223,34 @@ Feito:
   - Testes: `tests/test_metrics.py` (valores calculados à mão, gaps, janela, ordem de inserção,
     espaçamento irregular) e `tests/test_home_page.py` (AppTest: vazio, KPIs, escopo por
     período, período sem registros).
+- **Tendência / platô / anomalia — baselines (spec itens 8-10) — completo (2026-09-24).** São
+  os baselines simples contra os quais a versão futura baseada na posterior do GPR será comparada
+  via backtesting. Parâmetros são constantes no topo de cada módulo.
+  - `src/w8t/core/trend.py`: `linear_fit` (OLS + erro-padrão da inclinação), `window_slope`,
+    `classify`, `current_trend` sobre os últimos 21 dias (≥6 medições). Direção só é declarada
+    se o IC95% da inclinação exclui zero **e** |inclinação| ≥ 0,25 kg/sem; "estável" se o IC
+    inteiro cabe em ±0,25; senão "indefinido" (nunca força uma direção).
+  - `src/w8t/core/plateau.py`: `detect_plateaus` — data "plana" quando a inclinação OLS da
+    janela de 21 dias terminando nela tem |·| < 0,25 kg/sem (≥8 medições); datas planas
+    consecutivas viram um platô se durarem ≥21 dias. Agnóstico ao objetivo: a UI mostra os
+    períodos sobrepostos para o usuário interpretar (manutenção = esperado; perda/ganho =
+    estagnação). Limitação conhecida: início do platô sai adiantado até ~1 janela.
+  - `src/w8t/core/anomaly.py`: `detect_anomalies` — para cada medição, reta **Theil-Sen** sobre
+    as medições *anteriores* dos últimos 21 dias (≥8), extrapolada até a data; z = resíduo /
+    erro-padrão de previsão (sigma via MAD dos resíduos × fator de intervalo de previsão OLS);
+    |z| ≥ 3,5 marca. Só usa passado (acrescentar pontos futuros não muda veredito passado —
+    testado). Nunca altera nem remove a medição.
+    **Lição registrada:** a 1ª versão (OLS excluindo pontos já marcados) entrava em cascata —
+    um falso positivo cedo congelava a reta e gerava dezenas de falsos positivos seguidos.
+    Theil-Sen resolve sem exclusão.
+    **Números do baseline** (simulação, ruído 0,35 kg, 15% de dias faltando): ~1,6% de falsos
+    positivos; detecta +1,5 kg em ~73% e +2,0 kg em ~100% (limiar 4,0: 0,9% / 60% / 87%).
+  - `Home.py`: seção "Padrões" (tendência com IC95%, nº de platôs, nº de atípicas), platôs como
+    faixas cinza e atípicas como círculos âmbar no gráfico, tabelas com período(s) sobreposto(s)
+    e valor esperado/z. Detecção em `st.cache_data` (~0,4 s para 150 pontos).
+  - Testes: `tests/test_patterns.py` (OLS vs. `np.polyfit`, janela, IC, platô após perda,
+    anomalia plantada, só-passado, não-contaminação, série não modificada) e caso de UI em
+    `tests/test_home_page.py`.
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
@@ -233,14 +261,16 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): tendência/platô/anomalia com baselines simples (itens 8-10) —
-inclinação de janela móvel, z-score/MAD — em `core/`, com testes, antes de virar tela.
+Próximo passo (não iniciado): forecasting engine (spec itens 6, 11-14) — interface plugável
+fit/predict/uncertainty em `src/w8t/forecasting/`, começando pelos baselines (último valor, média
+móvel, regressão linear) antes de Holt, Kalman e GPR. Cada modelo se auto-gate conforme dado
+disponível; previsão sempre com intervalo.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
-Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period` e dashboard já
-feitos) → tendência/platô/anomalia com baselines simples (itens 8-10) → forecasting
+Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard e
+baselines de tendência/platô/anomalia já feitos) → forecasting
 engine com Kalman/GPR (itens 6, 11-14) → backtesting (item 15) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,

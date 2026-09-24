@@ -114,3 +114,23 @@ def test_demo_reset_button_only_in_demo_mode(app, monkeypatch):
     assert "Modo demonstração" in at.warning[0].value
     assert _metric(at, "Peso atual").value.endswith("kg")
     assert len(at.selectbox[0].options) == 3  # histórico completo + 2 períodos sintéticos
+
+
+def test_home_patterns_section(app):
+    # Steady loss with one planted spike -> trend down, no plateau, the spike flagged.
+    start = TODAY - timedelta(days=39)
+    with db_module.get_session() as session:
+        for i in range(40):
+            weight = 90.0 - 0.1 * i + (0.1 if i % 2 else -0.1) + (3.0 if i == 30 else 0.0)
+            repository.create_entry(
+                session, entry_date=start + timedelta(days=i), weight_kg=round(weight, 1)
+            )
+
+    at = app.run()
+
+    assert not at.exception
+    assert _metric(at, "Tendência (21 dias)").value == "descendo"
+    assert _metric(at, "Platôs detectados").value == "0"
+    assert _metric(at, "Medições atípicas").value == "1"
+    anomalies_table = at.dataframe[-1].value
+    assert anomalies_table["Data"].iloc[0] == (start + timedelta(days=30)).strftime("%d/%m/%Y")
