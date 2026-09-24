@@ -22,7 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 postgres = ["psycopg[binary]>=3.2"]
-insights = ["anthropic>=0.34"]
+insights = ["requests>=2.31"]
 
 [dependency-groups]
 dev = [

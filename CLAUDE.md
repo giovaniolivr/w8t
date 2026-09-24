@@ -120,7 +120,7 @@ stats engine (core)  → cálculos determinísticos: médias, tendência, platô
 forecasting engine   → modelos plugáveis (interface fit/predict/uncertainty), cada um se auto-gate
                        conforme dado disponível
 backtesting/eval     → roda modelos contra o passado, métricas por horizonte, comparação
-insights layer       → opcional, chama Claude API só para narrar números já calculados
+insights layer       → opcional, chama um LLM (Gemini) só para narrar números já calculados
 ```
 
 Fluxo da camada de insights (LLM), quando existir: dados brutos → processamento estatístico/
@@ -133,7 +133,10 @@ uso (single-user, poucas chamadas), então é mais questão de prioridade do que
 
 ### Stack
 Python 3.12 + `uv` · Streamlit (UI) · SQLAlchemy 2.0 + Alembic · pandas/numpy · statsmodels +
-scikit-learn · pytest · anthropic SDK isolado na camada de insights.
+scikit-learn · pytest · Gemini (REST via `requests`, plano gratuito) isolado na camada de
+insights — trocado do SDK da Anthropic em 2026-09-24 (a API da Anthropic não tem plano
+gratuito; Workers AI descartado para não dividir a cota diária de 10k neurons, que é por conta
+Cloudflare, com outro projeto do usuário).
 
 ### Dois modos de execução (privacidade)
 Peso corporal é dado sensível — não deve ser exposto publicamente.
@@ -507,6 +510,44 @@ Feito:
     dias faltantes e série intacta, flanco anômalo não usado como evidência, linhas da
     avaliação) e `tests/test_lacunas_page.py`.
 
+- **Camada de insights via LLM — completo (2026-09-24).**
+  - Provedor: **Gemini** (Google AI Studio, plano gratuito), `gemini-3.5-flash` configurável via
+    `GEMINI_MODEL`; chave em `GEMINI_API_KEY` **só no `.env`** (ignorado pelo git; o
+    `.env.example` tem o campo vazio). Chaves novas do AI Studio podem começar com `AQ.` (não só
+    `AIza`) — verificado que funcionam no endpoint `generativelanguage.googleapis.com`.
+    `thinkingConfig.thinkingBudget = 0`: sem isso o modelo gastava o limite de saída
+    "pensando" e devolvia texto vazio (observado); narrar números não precisa de raciocínio.
+  - `src/w8t/insights/summary.py`: `build_summary(series, periods, scope, today)` — **única
+    entrada do LLM**; números já calculados e arredondados (peso, tendência com IC e método,
+    platôs com períodos sobrepostos, atípicas, lacunas, previsão da combinação Kalman+Holt com
+    IC, ruído estimado da balança, meta). Tempo como "há N dias" / "N dias após a última
+    medição", **sem datas** (mantém o texto fixo da demo válido, já que a demo é ancorada em
+    hoje). Nunca inclui a série bruta. Período encerrado → sem previsão.
+  - `src/w8t/insights/providers.py`: interface `LLMProvider.generate(system, prompt)`;
+    `GeminiProvider` (REST, erros viram `ProviderError` sem vazar a chave; 429 → mensagem de
+    cota), `FakeProvider` para testes.
+  - `src/w8t/insights/narrator.py`: instruções (só números do JSON, sem causas, sem conselhos,
+    previsão sempre com IC, "dados insuficientes" dito como tal, sem datas, vírgula decimal,
+    prioridades) + **checagem de grounding**: todo número do texto é comparado (tolerância 0,05)
+    com os números do resumo; os que não batem são listados e a UI avisa. `python -m
+    w8t.insights.narrator --demo` regenera `src/w8t/insights/demo_summary.md` (texto fixo da
+    demo, gerado uma vez pelo Gemini; todos os números verificados — teste garante).
+  - `src/w8t/patterns/pipeline.py`: `detect(series)` (Kalman com fallback para baselines)
+    extraído do `Home.py` e compartilhado com o resumo, para os dois descreverem o mesmo.
+  - `src/w8t/app/pages/5_Resumo.py`: escopo como no dashboard, JSON enviado visível num
+    expander, texto **só ao clicar** (cada clique usa cota). Demo: texto fixo, nunca chama a
+    API. Sem chave: explica como configurar. Testado de ponta a ponta com o Gemini real em modo
+    local sobre dados sintéticos (não sobre os dados reais do usuário).
+  - Testes: `tests/test_insights.py` (resumo sem datas/série bruta, insuficiente, período
+    encerrado + meta, grounding pega números inventados, prompt contém regras e só o resumo,
+    Gemini com rede simulada: formato do request, erros, chave nunca vaza; texto da demo
+    verificado contra o resumo) e `tests/test_resumo_page.py` (sem chave, só gera ao clicar,
+    números inventados sinalizados, demo nunca chama a API). Nenhum teste chama a API real.
+  - Pendência: `pyproject.toml` trocou o extra `insights` de `anthropic` para `requests`;
+    **`uv.lock` precisa ser regenerado com `uv lock`** (uv não estava no PATH da sessão).
+  - Privacidade: no plano gratuito os termos do Google permitem usar o conteúdo enviado para
+    melhorar produtos; só números agregados são enviados, e só quando o usuário clica.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -516,19 +557,18 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): camada de insights via LLM (última fase do roadmap) — decidir com
-o usuário antes (custo/prioridade, chave de API, modelo). Pela spec: a LLM só narra números já
-calculados (resumo estruturado com período/objetivo, tendência com IC, platôs, anomalias,
-lacunas, previsão recomendada com intervalo e cobertura medida, métricas do backtesting), nunca
-recebe a série bruta como fonte de interpretação, nunca trata correlação como causa.
+Próximo passo: roadmap da spec concluído na camada analítica. Candidatos (decidir com o
+usuário): deploy da demo no Streamlit Community Cloud + Neon; polimento de UI (adiado por
+decisão); padrão semanal (efeito fim de semana) como componente sazonal no Kalman — limitação
+medida em reconstrução/detecção; revisitar o GPR com seleção de kernel pelo benchmark
+multi-série.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
 baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt, Kalman, GPR, combinação, detectores via Kalman e reconstrução de lacunas já
-feitos) → camada de insights via LLM (última fase,
-condicionada a viabilidade).
+feitos) → camada de insights via LLM (feita em 2026-09-24, Gemini gratuito).
 
 ## Convenções de trabalho
 

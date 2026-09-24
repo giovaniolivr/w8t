@@ -53,7 +53,7 @@ src/w8t/
   core/          # stats engine — cálculos determinísticos (médias, tendência, platô...)
   forecasting/   # modelos de previsão plugáveis (estatísticos/ML) + backtesting
   data/          # modelos SQLAlchemy, sessão de banco, repositórios
-  insights/      # camada opcional de narrativa via IA generativa (Claude API)
+  insights/      # camada opcional de narrativa via IA generativa (Gemini, plano gratuito)
 alembic/         # migrações de schema
 tests/
 ```

@@ -12,6 +12,7 @@ from w8t.data import periods as periods_repo
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
 from w8t.patterns import kalman as kal
+from w8t.patterns import pipeline
 
 GOAL_LABELS = {
     GoalDirection.LOSS: "perda",
@@ -121,28 +122,14 @@ st.caption(
 
 
 @st.cache_data(show_spinner=False)
-def _patterns(scoped: pd.Series):
-    """Kalman-based detectors (better than the baselines on the labeled evaluation,
-    docs/patterns_benchmark.md); the deterministic baselines take over when the history is too
-    short for the model. Cached: several model fits, recomputed only when the series changes."""
-    states = kal.smoothed_states(scoped)
-    if states is None:
-        return (
-            "baseline", trend.current_trend(scoped), "baseline",
-            plateau.detect_plateaus(scoped), anomaly.detect_anomalies(scoped), None,
-        )
-    k_trend = kal.current_trend(scoped)
-    return (
-        "kalman",
-        k_trend if k_trend is not None else trend.current_trend(scoped),
-        "kalman" if k_trend is not None else "baseline",
-        kal.detect_plateaus(scoped),
-        kal.detect_anomalies(scoped),
-        states,
-    )
+def _patterns(scoped: pd.Series) -> pipeline.Patterns:
+    # Several model fits; recomputed only when the scoped series changes.
+    return pipeline.detect(scoped)
 
 
-method, current_trend, trend_method, plateaus, anomalies, states = _patterns(series)
+_p = _patterns(series)
+method, current_trend, trend_method = _p.method, _p.trend, _p.trend_method
+plateaus, anomalies, states = _p.plateaus, _p.anomalies, _p.states
 flagged = anomalies[anomalies["is_anomaly"]]
 
 st.subheader("Padrões")

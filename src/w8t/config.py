@@ -18,7 +18,8 @@ class Settings(BaseSettings):
 
     app_env: Literal["local", "demo"] = "local"
     database_url: str = "sqlite:///./w8t_local.db"
-    anthropic_api_key: str | None = None
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.5-flash"
 
     @property
     def is_demo(self) -> bool:

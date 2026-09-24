@@ -1,0 +1,7 @@
+No histórico completo de 180 dias de calendário, o peso inicial registrado há 179 dias era de 88,1 kg e o peso atual, registrado hoje (há 0 dias), é de 81,5 kg. Isso representa uma variação total de -6,6 kg, o que equivale a uma redução de -7,5% no período. O peso máximo registrado foi de 88,1 kg, há 179 dias, e o peso mínimo foi de 80,2 kg, há 85 dias. A média móvel dos últimos 7 dias está em 81,3 kg.
+
+A tendência atual do peso é classificada como estável, calculada pelo método do filtro de Kalman sobre os últimos 60 dias. O ritmo atual apresenta uma variação de 0,07 kg por semana, com um intervalo de confiança de 95% entre 0,03 kg e 0,11 kg por semana, situando-se dentro da faixa considerada estável de até 0,25 kg por semana. Essa estabilidade é reforçada pela presença de um platô que se iniciou há 87 dias e se estende até hoje (há 0 dias), totalizando uma duração de 88 dias, com peso médio de 80,9 kg.
+
+Durante o período de monitoramento, que contou com 146 medições e uma maior lacuna de 3 dias sem registros, foi identificada uma medição atípica há 119 dias, quando o peso registrado foi de 85,1 kg, enquanto o valor esperado pela tendência era de 83,3 kg.
+
+As previsões obtidas pelo modelo de combinação Kalman + Holt estimam que, 7 dias após a última medição, o peso previsto seja de 81,6 kg, com intervalo de 95% de confiança entre 80,7 kg e 82,4 kg. Para o horizonte de 30 dias após a última medição, a estimativa do peso previsto é de 81,9 kg, com intervalo de 95% de confiança entre 79,9 kg e 84,0 kg.
