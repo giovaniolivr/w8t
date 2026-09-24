@@ -12,7 +12,7 @@ from w8t.forecasting.backtest import (
     walk_forward,
 )
 from w8t.forecasting.base import InsufficientDataError
-from w8t.forecasting.registry import all_models
+from w8t.forecasting.registry import all_models, kalman_holt_ensemble
 from w8t.forecasting.significance import MIN_EFFECTIVE_CASES, versus_best
 
 REFERENCE = "Último valor"
@@ -133,14 +133,32 @@ else:
 st.subheader(f"Previsão para os próximos {FORECAST_DAYS} dias")
 
 models = {m.name: m for m in all_models()}
-names = list(models)
-if not summary.empty:
-    best = summary.groupby("model")["mae"].mean().idxmin()
-    names.sort(key=lambda n: n != best)
-    labels = {n: f"{n} (menor erro no backtesting)" if n == best else n for n in names}
-else:
-    labels = {n: n for n in names}
-choice = st.selectbox("Modelo", names, format_func=labels.get)
+recommended = kalman_holt_ensemble().name
+best = summary.groupby("model")["mae"].mean().idxmin() if not summary.empty else None
+names = sorted(models, key=lambda n: (n != recommended, n != best))
+labels = {n: n for n in names}
+labels[recommended] = f"{recommended} (recomendado)"
+if best is not None and best != recommended:
+    labels[best] = f"{best} (menor erro neste histórico)"
+
+
+def _can_fit(name: str) -> bool:
+    try:
+        models[name].fit(series)
+        return True
+    except InsufficientDataError:
+        return False
+
+
+# Default: the recommended model if the history allows it, else the first one that fits.
+default = next((i for i, n in enumerate(names) if _can_fit(n)), 0)
+choice = st.selectbox("Modelo", names, index=default, format_func=labels.get)
+st.caption(
+    "**Recomendado** por padrão: no benchmark com 30 séries sintéticas de regimes diferentes "
+    "(docs/benchmark.md), a combinação Kalman + Holt foi a única calibrada (~95% de cobertura) "
+    "em todos os horizontes e nunca a pior em nenhum regime. O modelo de menor erro no seu "
+    "histórico raramente é *demonstradamente* melhor (veja o teste acima)."
+)
 
 try:
     forecast = models[choice].fit(series).predict(range(1, FORECAST_DAYS + 1))

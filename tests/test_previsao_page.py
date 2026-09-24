@@ -10,7 +10,7 @@ from streamlit.testing.v1 import AppTest
 import w8t.data.db as db_module
 from w8t.data import repository
 from w8t.data.models import Base
-from w8t.forecasting.registry import all_models
+from w8t.forecasting.registry import all_models, kalman_holt_ensemble
 
 TODAY = date.today()  # noqa: DTZ011 - entries are relative to "today" like real usage
 PAGE_PATH = str(
@@ -55,7 +55,9 @@ def test_short_history_explains_why_no_evaluation(app):
 
     assert not at.exception
     assert "histórico suficiente para avaliar" in at.info[0].value
-    # Linear model needs 7 points in 28 days -> 10 points is enough to forecast, with interval.
+    # Too short for the recommended ensemble (Kalman/Holt need 14 points) -> falls back to the
+    # first model that can fit, and still forecasts with an interval.
+    assert at.selectbox[0].value != kalman_holt_ensemble().name
     assert "Intervalo 95% (kg)" in at.dataframe[-1].value.columns
 
 
@@ -66,9 +68,11 @@ def test_backtest_table_and_best_model_preselected(app):
     assert not at.exception
     evaluation = at.dataframe[0].value
     assert set(evaluation["Modelo"]) == {m.name for m in all_models()}
-    # The model with the lowest mean backtest MAE is suggested first.
-    maes = evaluation.groupby("Modelo")["MAE (kg)"].mean()
-    assert at.selectbox[0].value == maes.idxmin()
+    # The benchmark-recommended ensemble is the default; the lowest-MAE model is labelled.
+    assert at.selectbox[0].value == kalman_holt_ensemble().name
+    best = evaluation.groupby("Modelo")["MAE (kg)"].mean().idxmin()
+    if best != kalman_holt_ensemble().name:
+        assert f"{best} (menor erro neste histórico)" in at.selectbox[0].options
     assert any("cobertura real foi" in c.value for c in at.caption)
 
 

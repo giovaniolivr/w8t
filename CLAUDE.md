@@ -177,7 +177,7 @@ GitHub para os quadrados verdes contarem.
 ## Estado atual
 
 Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia, backtesting) + forecasting engine completo (baselines, Holt amortecido, Kalman, GPR) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+tendência/platô/anomalia, backtesting) + forecasting engine completo (baselines, Holt amortecido, Kalman, GPR, combinação Kalman+Holt) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -415,6 +415,29 @@ Feito:
     determinísticos/realistas, gaps longos, relatórios, Wilcoxon detecta vencedor consistente) e
     caso de UI.
 
+- **Combinação Kalman + Holt — completo (2026-09-24).**
+  - `src/w8t/forecasting/ensemble.py`: `EqualWeightEnsemble` — média das previsões; intervalo
+    `"mixture"` (quantis da mistura 50/50 das preditivas gaussianas, resolvidos com `brentq`:
+    discordância entre membros vira incerteza) ou `"quantile_avg"` (média dos limites). Gate:
+    só ajusta se *todos* os membros ajustam (não degrada em silêncio para um modelo só).
+    `fit_from_fitted` combina membros já ajustados na mesma série; `walk_forward` usa isso para
+    não reajustar Kalman/Holt dentro da combinação (resultado idêntico — testado; página ~27 s →
+    ~20 s). `registry.kalman_holt_ensemble()` (intervalo mistura) está em `all_models()`.
+  - **Benchmark (30 séries, passo 3; Kalman / Holt / mistura / média-dos-limites):** mistura
+    tem o menor MAE médio em h=14 e h=30 (h=30: 0,645 vs Kalman 0,672, Holt 0,739) e é o único
+    **calibrado em todos os horizontes** (cobertura 95,1 / 95,0 / 95,8 / 95,1%; Kalman h=30 87%,
+    Holt 93%). Vs. Holt: demonstradamente melhor em h=14/30 (p_holm < 0,003); vs. Kalman: MAE
+    indistinguível (h=30 p=0,19) mas cobertura muito melhor. Por cenário nunca é o pior e fica
+    perto do melhor em cada regime. Média-dos-limites tem a mesma média mas subcobre em h=30
+    (92%) → mistura escolhida.
+  - Página de previsão: **combinação é o padrão recomendado** (com justificativa na legenda);
+    o de menor MAE no histórico do usuário aparece rotulado, não pré-selecionado — numa série
+    só essa diferença raramente é demonstrada. Se o histórico é curto demais para a combinação,
+    cai para o primeiro modelo que ajusta.
+  - Testes: `tests/test_ensemble.py` (média, membros idênticos reproduzem o intervalo, mistura
+    ≥ média-dos-limites quando discordam, quantil da mistura vs. Monte Carlo, gate por membro,
+    protótipos intactos, reuso no backtesting ≡ reajuste).
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -424,12 +447,12 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado) — decidir com o usuário entre:
-- **Combinação Kalman + Holt** (média das previsões; intervalo via mistura), candidata natural
-  a robustez entre regimes, dado que cada um vence em regimes opostos. Avaliar no benchmark.
-- Seguir o roadmap: tendência/platô/anomalia usando smoother do Kalman / posterior do GPR,
-  comparados contra os baselines → reconstrução de gaps → insights via LLM.
-Se o GPR for revisitado, escolher kernel pelo benchmark multi-série, não pela demo.
+Próximo passo (não iniciado): seguir o roadmap — tendência/platô/anomalia usando o smoother do
+Kalman (e/ou posterior do GPR), comparados contra os baselines atuais (`core/trend.py`,
+`core/plateau.py`, `core/anomaly.py`) com métricas próprias em séries sintéticas com rótulos
+conhecidos (os cenários do benchmark sabem onde está o platô/anomalia plantados) →
+reconstrução de gaps → insights via LLM. Se o GPR for revisitado, escolher kernel pelo
+benchmark multi-série, não pela demo.
 
 Oportunidade registrada: usar o *smoother* do Kalman no dashboard como a categoria "estado
 filtrado-suavizado" (tendência subjacente com banda), claramente distinto das medições.

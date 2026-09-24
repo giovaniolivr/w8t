@@ -76,13 +76,20 @@ def walk_forward(
         if all(v is None for v in truths.values()):
             continue  # nothing to score from this origin
 
+        fitted: dict[str, ForecastModel] = {}  # this origin's fits, reusable by ensembles
         for prototype in models:
             model = copy.deepcopy(prototype)
             try:
-                fc = model.fit(train).predict(list(horizons), level=level)
+                members = getattr(prototype, "member_names", None)
+                if members and all(name in fitted for name in members):
+                    model.fit_from_fitted([fitted[name] for name in members])
+                else:
+                    model.fit(train)
+                fc = model.predict(list(horizons), level=level)
             except InsufficientDataError as exc:
                 skipped.append({"model": prototype.name, "origin": origin, "reason": str(exc)})
                 continue
+            fitted[prototype.name] = model
             for i, h in enumerate(fc.horizons):
                 y = truths[int(h)]
                 if y is None:
