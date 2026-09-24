@@ -241,6 +241,12 @@ st.caption(
        "suficientes na janela; dias sem registro não são preenchidos. ")
     + "Faixas cinza marcam platôs; círculos âmbar, medições atípicas."
 )
+if states is not None and states.attrs.get("weekly_range_kg"):
+    st.caption(
+        f"**Padrão semanal detectado** (variação de ~{states.attrs['weekly_range_kg']:.1f} kg "
+        "conforme o dia da semana): a linha de tendência mostra o peso sem esse efeito, e ele é "
+        "levado em conta nas previsões, na detecção de atípicas e na estimativa de lacunas."
+    )
 
 
 def _periods_overlapping(start: date, end: date) -> str:

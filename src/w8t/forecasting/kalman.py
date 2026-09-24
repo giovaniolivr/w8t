@@ -20,6 +20,16 @@ only and must never feed an evaluation.
 Why smooth trend and not the full local linear trend: on the demo series both reach the same
 likelihood (the extra level-noise variance is estimated ~0), the smooth trend has a better AIC
 and fits ~6x faster, which matters because backtesting refits at every origin.
+
+Weekly pattern (added 2026-09-24): many people weigh more after weekends. An optional fixed
+7-day seasonal component (``seasonal=7``, deterministic) captures it - but only when the data
+supports it, otherwise it would fit noise. With ``weekly=None`` (default) both models are fitted
+and the weekly one is kept only if its one-step-ahead predictive log-likelihood, scored on the
+same observations after a 21-day burn-in, is higher (``WEEKLY_MIN_GAIN``). Only tried with
+>= ``WEEKLY_MIN_SPAN_DAYS`` of data. Measured (120-day series, noise 0.35 kg, 15% missing): 0/30
+false selections without a pattern; weekend bump of 0.5 kg selected 97%, 0.35 kg 80%, 0.25 kg
+37%, 0.15 kg 10%. On the 6 labeled scenarios x 8 seeds: 8/8 on the weekly one, 0/40 elsewhere.
+The level state (index 0) stays the deseasonalized weight; the slope stays index 1.
 """
 
 from __future__ import annotations
@@ -38,14 +48,70 @@ class NotConvergedError(InsufficientDataError):
     pass
 
 
-def fit_smooth_trend(series: pd.Series):
+WEEKLY_MIN_SPAN_DAYS = 56
+WEEKLY_MIN_GAIN = 0.0  # nats; the predictive score already penalizes the extra states
+SCORE_BURN_IN_DAYS = 21
+
+
+def fit_smooth_trend(series: pd.Series, weekly: bool | None = None):
     """Fit the smooth-trend model on a daily grid (missing days = NaN, never filled).
 
-    Returns the statsmodels results object. Raises :class:`NotConvergedError` if neither L-BFGS
-    nor the Powell fallback converges.
+    ``weekly``: True/False forces the weekly component; None chooses it from the data (see the
+    module docstring). Returns the statsmodels results object; ``has_weekly(result)`` tells which
+    one was kept. Raises :class:`NotConvergedError` if the fit doesn't converge.
     """
+    if weekly is not None:
+        return _fit(series, weekly)
+    plain = _fit(series, False)
+    if (series.index[-1] - series.index[0]).days < WEEKLY_MIN_SPAN_DAYS:
+        return plain
+    try:
+        seasonal = _fit(series, True)
+    except NotConvergedError:
+        return plain
+    gain = _predictive_score(seasonal) - _predictive_score(plain)
+    return seasonal if gain > WEEKLY_MIN_GAIN else plain
+
+
+def has_weekly(result) -> bool:
+    return bool(getattr(result.model, "seasonal", False))
+
+
+def smoothed_signal(result) -> tuple[np.ndarray, np.ndarray]:
+    """Smoothed expected measurement (level + weekly effect, without scale noise) and its
+    variance, for every day of the grid. Without the weekly component this is just the level."""
+    design = result.filter_results.design[0, :, 0]  # time-invariant observation vector
+    states = result.smoothed_state
+    cov = result.smoothed_state_cov
+    mean = design @ states
+    var = np.einsum("i,ijt,j->t", design, cov, design)
+    return mean, np.clip(var, 0.0, None)
+
+
+def weekly_effect_range(result) -> float | None:
+    """Peak-to-trough size of the estimated weekly pattern (kg), None without it."""
+    if not has_weekly(result):
+        return None
+    mean, _ = smoothed_signal(result)
+    effect = mean - result.smoothed_state[0]
+    last_week = effect[-7:]
+    return float(last_week.max() - last_week.min())
+
+
+def _predictive_score(result) -> float:
+    """Gaussian log-likelihood of the one-step-ahead predictions of observed days after the
+    burn-in - comparable between models because it's scored on the same observations."""
+    fr = result.filter_results
+    v, f = fr.forecasts_error[0], fr.forecasts_error_cov[0, 0]
+    scored = ~np.isnan(v)
+    scored[:SCORE_BURN_IN_DAYS] = False
+    return float(np.sum(-0.5 * (np.log(2 * np.pi * f[scored]) + v[scored] ** 2 / f[scored])))
+
+
+def _fit(series: pd.Series, weekly: bool):
     daily = series.asfreq("D")
-    model = UnobservedComponents(daily, level="strend")
+    extra = {"seasonal": 7, "stochastic_seasonal": False} if weekly else {}
+    model = UnobservedComponents(daily, level="strend", **extra)
     with warnings.catch_warnings():
         # statsmodels warns liberally; convergence is checked explicitly below
         warnings.simplefilter("ignore")
@@ -73,6 +139,7 @@ class KalmanSmoothTrend(ForecastModel):
             )
         result = fit_smooth_trend(series)
         self._result = result
+        self.weekly = has_weekly(result)
         params = dict(zip(result.model.param_names, result.params, strict=True))
         self.noise_sd = float(np.sqrt(params["sigma2.irregular"]))
         self.slope_change_sd = float(np.sqrt(params["sigma2.trend"]))

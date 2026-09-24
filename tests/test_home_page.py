@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -151,3 +152,20 @@ def test_short_history_falls_back_to_baseline_detectors(app):
     assert not at.exception
     assert _metric(at, "Tendência (21 dias)").value == "descendo"
     assert not any("Kalman" in c.value for c in at.caption)
+
+
+def test_weekly_pattern_is_announced(app):
+    rng = np.random.default_rng(1)
+    start = TODAY - timedelta(days=119)
+    with db_module.get_session() as session:
+        for i in range(120):
+            weekend = 0.6 if (start + timedelta(days=i)).weekday() >= 5 else 0.0
+            repository.create_entry(
+                session, entry_date=start + timedelta(days=i),
+                weight_kg=round(80 + weekend + rng.normal(0, 0.25), 1),
+            )
+
+    at = app.run()
+
+    assert not at.exception
+    assert any("Padrão semanal detectado" in c.value for c in at.caption)

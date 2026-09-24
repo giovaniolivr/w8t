@@ -548,6 +548,33 @@ Feito:
   - Privacidade: no plano gratuito os termos do Google permitem usar o conteúdo enviado para
     melhorar produtos; só números agregados são enviados, e só quando o usuário clica.
 
+- **Padrão semanal no Kalman (fine-tuning, item 1 de 3) — completo (2026-09-24).**
+  - `forecasting/kalman.fit_smooth_trend(series, weekly=None)`: com `None` (padrão) ajusta o
+    modelo sem e com componente semanal fixo (`seasonal=7`, determinístico) e só mantém o
+    semanal se a **log-verossimilhança preditiva um-passo-à-frente**, nas mesmas observações
+    após 21 dias de burn-in, for maior (`WEEKLY_MIN_GAIN = 0`; o escore preditivo já penaliza
+    os estados extras). Só tenta com ≥ 56 dias. (AIC/llf do statsmodels não servem aqui: o
+    burn-in difuso difere entre os modelos, então compararia observações diferentes.)
+  - **Calibração do critério:** séries planas sem padrão, 0/30 seleções falsas; efeito de fim
+    de semana 0,5 / 0,35 / 0,25 / 0,15 kg (ruído 0,35) selecionado 97% / 80% / 37% / 10%; nos 6
+    cenários rotulados × 8 sementes, 8/8 no semanal e 0/40 nos demais.
+  - Helpers: `has_weekly`, `smoothed_signal` (nível + efeito semanal e variância, via vetor de
+    observação `design`), `weekly_effect_range`. O estado 0 continua sendo o nível
+    **dessazonalizado** e o 1 a inclinação — consumidores não mudam de significado. Bug pego pelo
+    teste: `smoothed_states` desempacotava exatamente 2 estados.
+  - Consumidores: previsão (`get_forecast` inclui o efeito), detectores (inovações já descontam
+    o efeito → fim de semana deixa de parecer anomalia), lacunas (estimativa = nível + efeito do
+    dia), resumo LLM (`padrao_semanal` com amplitude), dashboard (aviso "Padrão semanal
+    detectado", linha verde = tendência sem o efeito).
+  - **Resultado (antes → depois, só o cenário semanal muda; demais idênticos, variação máx.
+    0,002 kg):** lacunas MAE vs. peso verdadeiro 0,203 → 0,072 kg (2,8x), intervalo 17% mais
+    estreito, cobertura 94%; anomalias recall 67% → 92% (FP 0,08 → 0,17 /100); previsão Kalman
+    MAE −9% a −14% por horizonte (h=14: 0,311 → 0,267), combinação h=14 0,311 → 0,277;
+    tendência 82% → 79% (leve piora). Custo: Kalman ajusta 2 modelos em séries ≥ 56 dias
+    (benchmark de previsão ~2x mais lento).
+  - Testes novos em `tests/test_patterns_kalman.py` (detecta só quando existe, amplitude, não
+    tenta em série curta, detectores com modelo semanal) e `tests/test_home_page.py` (aviso).
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -557,11 +584,9 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo: roadmap da spec concluído na camada analítica. Candidatos (decidir com o
-usuário): deploy da demo no Streamlit Community Cloud + Neon; polimento de UI (adiado por
-decisão); padrão semanal (efeito fim de semana) como componente sazonal no Kalman — limitação
-medida em reconstrução/detecção; revisitar o GPR com seleção de kernel pelo benchmark
-multi-série.
+Próximo passo (fine-tuning, ordem combinada com o usuário em 2026-09-24): (2) revisitar o GPR
+com seleção de kernel pelo benchmark multi-série (não pela demo) → seguir ajustando os modelos até
+o produto estar "bem amarrado" → só então polimento de UI (animações/CSS) e deploy da demo.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.

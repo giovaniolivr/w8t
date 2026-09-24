@@ -35,7 +35,7 @@ import pandas as pd
 
 from w8t.core.plateau import PLATEAU_MIN_DAYS, Plateau
 from w8t.core.trend import STABLE_BAND_KG_PER_WEEK, Trend, TrendDirection
-from w8t.forecasting.kalman import fit_smooth_trend
+from w8t.forecasting.kalman import fit_smooth_trend, weekly_effect_range
 
 TREND_WINDOW_DAYS = 60
 MIN_OBS = 14
@@ -64,11 +64,12 @@ def smoothed_states(series: pd.Series) -> pd.DataFrame | None:
     if not _enough(series):
         return None
     result = fit_smooth_trend(series)
-    level, slope = result.smoothed_state
+    # States: level, slope, then (if the weekly pattern was detected) the seasonal states.
+    level, slope = result.smoothed_state[0], result.smoothed_state[1]
     level_sd = _sd(result.smoothed_state_cov[0, 0])
     slope_sd = _sd(result.smoothed_state_cov[1, 1])
     index = pd.date_range(series.index[0], series.index[-1], freq="D", name="date")
-    return pd.DataFrame(
+    states = pd.DataFrame(
         {
             "observed": index.isin(series.index),
             "level_kg": level,
@@ -80,6 +81,10 @@ def smoothed_states(series: pd.Series) -> pd.DataFrame | None:
         },
         index=index,
     )
+    # Level is the deseasonalized weight; when a weekly pattern was detected, record its size so
+    # the UI can say the trend line excludes it.
+    states.attrs["weekly_range_kg"] = weekly_effect_range(result)
+    return states
 
 
 def _classify(slope: float, low: float, high: float, band: float) -> TrendDirection:

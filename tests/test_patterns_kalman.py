@@ -152,3 +152,40 @@ def test_evaluate_series_counts_are_consistent():
         assert r["anomaly_tp"] <= r["anomaly_planted"] == ev.N_ANOMALIES
     summary = ev.summarize(pd.DataFrame(rows), ["method"])
     assert summary["trend_correct"].between(0, 1).all()
+
+
+# --- weekly pattern -----------------------------------------------------------------------------
+
+
+def weekly_series(amp=0.5, n=120, seed=9):
+    rng = np.random.default_rng(seed)
+    d = np.arange(n)
+    y = 80 + np.where(d % 7 < 2, amp, 0.0) + rng.normal(0, 0.3, n)
+    return series_from(y)
+
+
+def test_weekly_pattern_is_detected_only_when_present():
+    from w8t.forecasting.kalman import fit_smooth_trend, has_weekly, weekly_effect_range
+
+    with_pattern = fit_smooth_trend(weekly_series())
+    without = fit_smooth_trend(weekly_series(amp=0.0))
+
+    assert has_weekly(with_pattern) and not has_weekly(without)
+    assert weekly_effect_range(with_pattern) == pytest.approx(0.5, abs=0.25)
+    assert weekly_effect_range(without) is None
+
+
+def test_weekly_pattern_is_not_tried_on_short_series():
+    from w8t.forecasting.kalman import fit_smooth_trend, has_weekly
+
+    assert not has_weekly(fit_smooth_trend(weekly_series(n=40)))
+
+
+def test_detectors_handle_the_weekly_model():
+    s = weekly_series()
+    states = kal.smoothed_states(s)
+    flags = kal.detect_anomalies(s)
+
+    assert states["slope_kg_per_week"].abs().max() < 0.25  # flat underneath the weekly wiggle
+    assert kal.current_trend(s).direction is TrendDirection.STABLE
+    assert not flags["is_anomaly"].any()  # weekend bumps are expected, not anomalies

@@ -12,8 +12,9 @@ measurements:
   scale noise estimated on consecutive-day differences, with the variance of interpolating two
   noisy endpoints. Ignores any curvature - the reference to beat.
 - ``kalman``: RTS-smoothed level of the smooth-trend model fitted on the whole series (uses data
-  on both sides of the gap, which is the point here), variance = smoothed level variance +
-  measurement noise.
+  on both sides of the gap, which is the point here) - plus the weekly effect of that weekday
+  when the model detected a weekly pattern - variance = smoothed signal variance + measurement
+  noise.
 - ``gpr``: GPR (linear + RBF + white noise, the forecasting kernel) fitted on measurements within
   ``GPR_CONTEXT_DAYS`` of the gap on both sides; predictive std includes the learned noise.
 
@@ -38,7 +39,7 @@ from scipy import stats
 from sklearn.gaussian_process import GaussianProcessRegressor
 
 from w8t.forecasting.gpr import _kernel as gpr_kernel
-from w8t.forecasting.kalman import fit_smooth_trend
+from w8t.forecasting.kalman import fit_smooth_trend, smoothed_signal
 from w8t.patterns.kalman import _enough, detect_anomalies
 
 METHODS = ("linear", "kalman", "gpr")
@@ -123,8 +124,8 @@ def _kalman(series: pd.Series, days: pd.DatetimeIndex):
     result = fit_smooth_trend(series)
     grid = pd.date_range(series.index[0], series.index[-1], freq="D")
     pos = grid.get_indexer(days)
-    level = result.smoothed_state[0, pos]
-    level_var = np.clip(result.smoothed_state_cov[0, 0, pos], 0.0, None)
+    signal, signal_var = smoothed_signal(result)  # level (+ weekly effect when detected)
+    level, level_var = signal[pos], signal_var[pos]
     params = dict(zip(result.model.param_names, np.asarray(result.params), strict=True))
     noise_var = float(params["sigma2.irregular"])
     return level, np.sqrt(level_var + noise_var)

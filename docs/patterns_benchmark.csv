@@ -32,21 +32,21 @@ bulk,6,kalman,14,0,7,0,0,0,3,3,0,155
 bulk,7,baseline,12,0,9,0,132,0,3,3,2,151
 bulk,7,kalman,16,0,5,0,0,0,3,3,0,157
 manutenção semanal,0,baseline,1,1,19,137,0,0,3,2,1,145
-manutenção semanal,0,kalman,18,0,3,137,0,0,3,3,0,151
+manutenção semanal,0,kalman,18,0,3,137,0,0,3,3,0,147
 manutenção semanal,1,baseline,6,0,15,141,0,0,3,3,2,151
-manutenção semanal,1,kalman,19,1,1,141,0,0,3,3,0,157
+manutenção semanal,1,kalman,19,1,1,141,0,0,3,3,1,152
 manutenção semanal,2,baseline,0,0,21,135,0,0,3,1,2,146
-manutenção semanal,2,kalman,17,0,4,135,0,0,3,1,0,152
+manutenção semanal,2,kalman,16,0,5,135,0,0,3,2,0,148
 manutenção semanal,3,baseline,3,0,18,140,0,0,3,3,1,150
-manutenção semanal,3,kalman,19,0,2,140,0,0,3,3,1,156
+manutenção semanal,3,kalman,19,0,2,140,0,0,3,3,1,151
 manutenção semanal,4,baseline,1,0,20,141,0,0,3,0,1,153
-manutenção semanal,4,kalman,16,0,5,141,0,0,3,0,0,159
+manutenção semanal,4,kalman,16,0,5,141,0,0,3,3,0,154
 manutenção semanal,5,baseline,3,0,18,139,0,0,3,2,1,148
-manutenção semanal,5,kalman,16,0,5,139,0,0,3,3,0,154
+manutenção semanal,5,kalman,15,0,6,139,0,0,3,3,0,150
 manutenção semanal,6,baseline,2,1,18,140,0,0,3,1,3,149
-manutenção semanal,6,kalman,17,0,4,140,0,0,3,1,0,155
+manutenção semanal,6,kalman,17,0,4,140,0,0,3,2,0,149
 manutenção semanal,7,baseline,1,1,19,139,0,0,3,3,2,151
-manutenção semanal,7,kalman,16,0,5,139,0,0,3,2,0,157
+manutenção semanal,7,kalman,13,0,8,139,0,0,3,3,0,152
 cutting→bulk,0,baseline,15,2,4,0,47,0,3,3,6,145
 cutting→bulk,0,kalman,13,1,7,0,0,0,3,3,1,151
 cutting→bulk,1,baseline,17,2,2,0,65,0,3,3,0,151

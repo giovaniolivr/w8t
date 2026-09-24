@@ -15,6 +15,7 @@ import pandas as pd
 from w8t.core import metrics
 from w8t.data.models import GoalDirection, Period
 from w8t.forecasting.base import InsufficientDataError
+from w8t.forecasting.kalman import weekly_effect_range
 from w8t.forecasting.registry import kalman_holt_ensemble
 from w8t.patterns import gaps, pipeline
 
@@ -168,4 +169,13 @@ def _forecast(series: pd.Series, scope: Period | None, today: date) -> dict:
             ],
         },
         "ruido_tipico_da_balanca_kg": round(kalman.noise_sd, 2),
+        "padrao_semanal": (
+            {
+                "detectado": True,
+                "amplitude_kg": round(weekly_effect_range(kalman._result), 1),
+                "observacao": "o peso varia de forma recorrente conforme o dia da semana",
+            }
+            if kalman.weekly
+            else {"detectado": False}
+        ),
     }

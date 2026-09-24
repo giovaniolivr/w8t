@@ -7,7 +7,7 @@ Gerado por `python -m w8t.patterns.evaluation`. 6 cenários × 8 sementes = 48 s
 | method | trend_correct | trend_wrong | trend_undetermined | plateau_precision | plateau_recall | plateau_f1 | anomaly_recall | anomaly_fp_per_100 |
 |---|---|---|---|---|---|---|---|---|
 | baseline | 59% | 4% | 38% | 54% | 100% | 70% | 82% | 1.36 |
-| kalman | 74% | 3% | 22% | 100% | 99% | 100% | 85% | 0.11 |
+| kalman | 74% | 3% | 23% | 100% | 99% | 100% | 90% | 0.12 |
 
 ## Por cenário
 
@@ -22,6 +22,6 @@ Gerado por `python -m w8t.patterns.evaluation`. 6 cenários × 8 sementes = 48 s
 | cutting→platô | baseline | 49% | 9% | 42% | 87% | 99% | 93% | 83% | 1.42 |
 | cutting→platô | kalman | 55% | 10% | 36% | 100% | 99% | 99% | 83% | 0.08 |
 | manutenção semanal | baseline | 10% | 2% | 88% | 100% | 100% | 100% | 62% | 1.09 |
-| manutenção semanal | kalman | 82% | 1% | 17% | 100% | 100% | 100% | 67% | 0.08 |
+| manutenção semanal | kalman | 79% | 1% | 20% | 100% | 100% | 100% | 92% | 0.17 |
 | manutenção→cutting | baseline | 67% | 2% | 32% | 76% | 100% | 86% | 83% | 1.51 |
 | manutenção→cutting | kalman | 71% | 5% | 24% | 99% | 98% | 99% | 79% | 0.08 |
