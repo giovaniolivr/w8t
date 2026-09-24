@@ -10,6 +10,7 @@ from streamlit.testing.v1 import AppTest
 import w8t.data.db as db_module
 from w8t.data import repository
 from w8t.data.models import Base
+from w8t.forecasting.registry import all_models
 
 TODAY = date.today()  # noqa: DTZ011 - entries are relative to "today" like real usage
 PAGE_PATH = str(
@@ -64,9 +65,10 @@ def test_backtest_table_and_best_model_preselected(app):
 
     assert not at.exception
     evaluation = at.dataframe[0].value
-    assert set(evaluation["Modelo"]) == {"Último valor", "Média móvel 7d", "Regressão linear 28d"}
-    # Clean linear trend -> regression has the lowest backtest error and is suggested first.
-    assert at.selectbox[0].value == "Regressão linear 28d"
+    assert set(evaluation["Modelo"]) == {m.name for m in all_models()}
+    # The model with the lowest mean backtest MAE is suggested first.
+    maes = evaluation.groupby("Modelo")["MAE (kg)"].mean()
+    assert at.selectbox[0].value == maes.idxmin()
     assert any("cobertura real foi" in c.value for c in at.caption)
 
 

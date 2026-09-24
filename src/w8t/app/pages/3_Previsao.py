@@ -12,7 +12,7 @@ from w8t.forecasting.backtest import (
     walk_forward,
 )
 from w8t.forecasting.base import InsufficientDataError
-from w8t.forecasting.baselines import baseline_models
+from w8t.forecasting.registry import all_models
 
 REFERENCE = "Último valor"
 FORECAST_DAYS = 30
@@ -37,7 +37,7 @@ if series.empty:
 
 @st.cache_data(show_spinner="Rodando backtesting...")
 def _backtest(s: pd.Series):
-    result = walk_forward(s, baseline_models(), step_days=1)
+    result = walk_forward(s, all_models(), step_days=1)
     return result.summary(reference=REFERENCE), result.skipped
 
 
@@ -87,7 +87,7 @@ else:
 
 st.subheader(f"Previsão para os próximos {FORECAST_DAYS} dias")
 
-models = {m.name: m for m in baseline_models()}
+models = {m.name: m for m in all_models()}
 names = list(models)
 if not summary.empty:
     best = summary.groupby("model")["mae"].mean().idxmin()

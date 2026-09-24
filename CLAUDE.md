@@ -53,7 +53,8 @@ ganham de modelos data-hungry. Progressão planejada:
 
 1. Baseline (último valor / média móvel)
 2. Regressão linear sobre janela móvel
-3. Holt / Holt-Winters (exponential smoothing) — `statsmodels`
+3. Holt com tendência amortecida — **implementação própria** (ver "Holt amortecido" em Estado
+   atual: `statsmodels` falha silenciosamente com dias faltantes)
 4. Modelo de espaço de estados / Filtro de Kalman (`statsmodels.tsa.UnobservedComponents`) —
    modela peso como tendência + ruído, dá incerteza nativamente
 5. Gaussian Process Regression (`scikit-learn`)
@@ -176,7 +177,7 @@ GitHub para os quadrados verdes contarem.
 ## Estado atual
 
 Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia, backtesting) + forecasting engine com baselines **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+tendência/platô/anomalia, backtesting) + forecasting engine (baselines + Holt amortecido) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -298,6 +299,30 @@ Feito:
     cobertura 86% → 53% conforme o horizonte (intervalo constante). Último valor: cobertura
     ~100% às custas de IC de 9,5 kg em h=30 — alta cobertura com intervalo inútil não é mérito.
 
+- **Holt amortecido — ETS(A,Ad,N) (roadmap passo 3) — completo (2026-09-24).**
+  - `src/w8t/forecasting/holt.py`, implementação própria. **Por quê:** `ExponentialSmoothing` e
+    `ETSModel` do `statsmodels` exigem série regular; com NaN nos dias faltantes falham em
+    silêncio (não convergem / log-verossimilhança NaN / todos os ajustados NaN, só com warning)
+    — verificado. Reamostrar + interpolar fabricaria medições.
+  - Grade diária; dia sem medição só propaga o estado (`l ← l+φb`, `b ← φb`), nada é imputado.
+    `holt_filter` é a recursão pura (testada contra `statsmodels.ETSModel.smooth` numa série sem
+    faltas: erros idênticos até 1e-10). Erro observado após gap de k dias tem variância
+    σ²·v(k); parâmetros (α, β=α·β*, φ∈[0,8; 0,98]) por máxima verossimilhança gaussiana com σ²
+    concentrado, 2 pontos de partida L-BFGS-B. Previsão: média `l + (φ+…+φ^h)·b`, variância
+    σ²·v(h). Gate: ≥14 medições cobrindo ≥21 dias. Estado inicial: 1ª medição + inclinação OLS
+    dos primeiros 14 dias.
+  - `src/w8t/forecasting/registry.py`: `all_models()` = baselines + Holt; a página de previsão e
+    o backtesting usam o registro (modelo novo entra na comparação automaticamente).
+  - Testes: `tests/test_holt.py` (equivalência com statsmodels, propagação em gap, v(k),
+    gate, amortecimento limitado por φ/(1−φ)·b, recuperação de α/σ e cobertura ~95% em dados
+    simulados do próprio processo ETS com 15% de dias faltando).
+  - **Resultado na demo (mesmos casos):** único modelo que melhora MAE *e* calibra a cobertura
+    em horizonte longo — h=30: MAE 0,79 (regressão 0,83), cobertura 94% (regressão 75%), viés
+    −0,03 (regressão +0,53); h=14: MAE 0,38 vs 0,43, cobertura 94%. Horizontes curtos ≈ empate
+    com a regressão. Ressalvas: uma única série sintética; φ estimado bateu no limite 0,98.
+  - Custo: backtesting passo 1 dia com 4 modelos na demo ~10 s (cacheado por série) — observar
+    quando entrarem Kalman/GPR.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -307,17 +332,17 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): Holt / exponential smoothing com tendência amortecida
-(`statsmodels`), plugado na mesma interface e entrando direto na tabela de backtesting. Depois
-Kalman (`UnobservedComponents`, local linear trend; *filter* para previsão/avaliação) e GPR.
-Critério de sucesso de cada modelo novo: melhorar MAE **e** trazer a cobertura para perto de 95%
-em horizontes longos (onde os baselines falham), nos mesmos casos.
+Próximo passo (não iniciado): Kalman — `statsmodels.tsa.UnobservedComponents` (local linear
+trend), que aceita NaN nativamente (confirmar, dado o que aconteceu com ETS). *Filter* para
+previsão/backtesting; *smoother* reservado para exibição descritiva do passado. Critério: bater o
+Holt amortecido em MAE/cobertura nos mesmos casos, ou justificar pela interpretabilidade
+(variâncias de nível/tendência/ruído explícitas).
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
-baselines de tendência/platô/anomalia, forecasting baselines e backtesting já feitos) → Holt →
+baselines de tendência/platô/anomalia, forecasting baselines e backtesting e Holt já feitos) →
 Kalman → GPR (itens 6, 11-14) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
