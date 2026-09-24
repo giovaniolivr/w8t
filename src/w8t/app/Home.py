@@ -3,10 +3,11 @@ from datetime import date
 import plotly.graph_objects as go
 import streamlit as st
 
+from w8t.app import theme
 from w8t.config import settings
 from w8t.core import metrics
+from w8t.data import demo, repository
 from w8t.data import periods as periods_repo
-from w8t.data import repository
 from w8t.data.db import get_session
 from w8t.data.models import GoalDirection
 
@@ -25,6 +26,16 @@ st.caption(
     f"**{settings.app_env}**"
 )
 
+if settings.is_demo:
+    st.warning(
+        "**Modo demonstração** — todos os dados exibidos são sintéticos, gerados para ilustrar "
+        "o app. Qualquer visitante pode editá-los; use o botão na barra lateral para restaurar."
+    )
+    if st.sidebar.button("Resetar dados de demonstração", type="primary"):
+        with get_session() as session:
+            demo.reset_demo_data(session, today=date.today())
+        st.rerun()
+
 with get_session() as session:
     points = [(e.entry_date, e.weight_kg) for e in repository.list_entries(session)]
     all_periods = periods_repo.list_periods(session)
@@ -33,7 +44,10 @@ full_series = metrics.to_series(points)
 
 if full_series.empty:
     st.info(
-        "Nenhum registro de peso ainda. Comece pela página **Registro de Peso** no menu lateral."
+        "Nenhum registro ainda. Use **Resetar dados de demonstração** na barra lateral."
+        if settings.is_demo
+        else "Nenhum registro de peso ainda. Comece pela página **Registro de Peso** no menu "
+        "lateral."
     )
     st.stop()
 
@@ -108,13 +122,16 @@ ma30 = metrics.rolling_mean(series, 30)
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=series.index, y=series, mode="markers", name="Medição real",
-                         marker={"size": 7}))
+                         marker={"size": 7, "color": theme.MEASUREMENT}))
 fig.add_trace(go.Scatter(x=ma7.index, y=ma7, mode="lines", name="Média móvel 7d",
+                         line={"color": theme.MOVING_AVG_SHORT, "width": 2.5},
                          connectgaps=False))
 fig.add_trace(go.Scatter(x=ma30.index, y=ma30, mode="lines", name="Média móvel 30d",
-                         line={"dash": "dash"}, connectgaps=False))
+                         line={"color": theme.MOVING_AVG_LONG, "dash": "dash"},
+                         connectgaps=False))
 if period is not None and period.target_weight_kg is not None:
-    fig.add_hline(y=period.target_weight_kg, line_dash="dot", annotation_text="meta")
+    fig.add_hline(y=period.target_weight_kg, line_dash="dot", line_color=theme.TARGET,
+                  annotation_text="meta")
 fig.update_layout(
     height=420, margin={"l": 10, "r": 10, "t": 30, "b": 10},
     yaxis_title="kg", legend={"orientation": "h", "y": 1.08},

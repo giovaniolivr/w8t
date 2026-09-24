@@ -21,3 +21,6 @@ __pycache__/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Segredos do Streamlit (Community Cloud: DATABASE_URL do Neon etc.)
+.streamlit/secrets.toml

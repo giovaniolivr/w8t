@@ -1,0 +1,8 @@
+# Identidade visual W8T: verde (destaque), cinza escuro (superfícies), preto (fundo).
+# Cores de gráficos ficam em src/w8t/app/theme.py - manter as duas em sincronia.
+[theme]
+base = "dark"
+primaryColor = "#22C55E"
+backgroundColor = "#0A0A0A"
+secondaryBackgroundColor = "#1F2322"
+textColor = "#E5E7EB"

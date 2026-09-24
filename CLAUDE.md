@@ -150,6 +150,23 @@ Selecionado via `APP_ENV` em `.env` (ver `src/w8t/config.py`). Troca de banco é
 **Streamlit Community Cloud** — gratuito, feito para Streamlit, redeploy automático a partir do
 GitHub. (Alternativa descartada: Render, que já hospeda outro site do usuário, mas exigiria
 Dockerfile/build manual para Streamlit.)
+Confirmado de novo em 2026-09-24. Sem autenticação: a versão pública (modo `demo`) é editável
+por qualquer visitante, o que é aceitável porque só contém dados sintéticos; o botão "Resetar
+dados de demonstração" (sidebar do `Home.py`, visível só com `APP_ENV=demo`) restaura o estado.
+
+### Dados de demonstração
+`src/w8t/data/demo.py`: `generate_series(today)` gera ~180 dias determinísticos (seed fixa,
+datas ancoradas em `today`): tendência de perda → platô → manutenção com leve reganho, ruído
+gaussiano, ~15% de dias faltando e uma anomalia proposital (+2,5 kg no dia 60).
+`reset_demo_data` apaga todos os registros/períodos e grava a série + 2 períodos ("Cutting" com
+meta, "Manutenção" em andamento). Levanta `NotDemoModeError` se `APP_ENV` não for `demo` — guarda
+contra apagar dados reais. Testes em `tests/test_demo.py`.
+
+### Identidade visual
+Paleta verde / cinza escuro / preto, tema escuro. Tema do Streamlit em `.streamlit/config.toml`;
+cores de gráfico em `src/w8t/app/theme.py` (manter em sincronia). Convenção: **medição real em
+cinza neutro, valores derivados (médias, tendência, futuramente previsão) em verde** — reforça
+visualmente a taxonomia de 4 categorias de valor.
 
 ### Git / GitHub
 Commits devem contar no dashboard de contribuições de `Giovaniolivr`. Email de commit configurado

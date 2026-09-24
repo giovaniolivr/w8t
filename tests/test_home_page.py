@@ -98,3 +98,19 @@ def test_home_period_without_entries(app):
 
     assert not at.exception
     assert "Nenhum registro de peso dentro deste período" in at.info[0].value
+
+
+def test_demo_reset_button_only_in_demo_mode(app, monkeypatch):
+    from w8t.config import settings
+
+    at = app.run()
+    assert len(at.sidebar.button) == 0
+
+    monkeypatch.setattr(settings, "app_env", "demo")
+    at = app.run()
+    at.sidebar.button[0].click().run()
+
+    assert not at.exception
+    assert "Modo demonstração" in at.warning[0].value
+    assert _metric(at, "Peso atual").value.endswith("kg")
+    assert len(at.selectbox[0].options) == 3  # histórico completo + 2 períodos sintéticos
