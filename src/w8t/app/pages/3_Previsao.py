@@ -17,6 +17,9 @@ from w8t.forecasting.registry import all_models
 REFERENCE = "Último valor"
 FORECAST_DAYS = 30
 HISTORY_SHOWN_DAYS = 60
+# Every 2 days: ~half the cases of a daily step, but the page loads in ~15 s instead of ~30 s
+# with 6 models (cached per series afterwards).
+BACKTEST_STEP_DAYS = 2
 
 st.set_page_config(page_title="W8T · Previsão", page_icon=":crystal_ball:", layout="wide")
 st.title("Previsão")
@@ -37,7 +40,7 @@ if series.empty:
 
 @st.cache_data(show_spinner="Rodando backtesting...")
 def _backtest(s: pd.Series):
-    result = walk_forward(s, all_models(), step_days=1)
+    result = walk_forward(s, all_models(), step_days=BACKTEST_STEP_DAYS)
     return result.summary(reference=REFERENCE), result.skipped
 
 
@@ -77,10 +80,10 @@ else:
         },
     )
     st.caption(
-        "Para cada data passada, o modelo é ajustado só com os dados até aquele dia e comparado "
-        "com a medição real N dias depois (sem interpolar dias faltantes). Todos os modelos são "
-        "comparados nos mesmos casos. **Cobertura** é a fração de vezes que o valor real caiu "
-        "dentro do intervalo de 95%: bem abaixo de 95% = modelo confiante demais; 100% com "
+        f"Para cada data passada (a cada {BACKTEST_STEP_DAYS} dias), o modelo é ajustado só com "
+        "os dados até aquele dia e comparado com a medição real N dias depois (sem interpolar "
+        "dias faltantes). Todos os modelos são comparados nos mesmos casos. **Cobertura** é a "
+        "fração de vezes que o valor real caiu dentro do intervalo de 95%: bem abaixo de 95% = modelo confiante demais; 100% com "
         "intervalo largo = cauteloso a ponto de ser pouco útil. **Viés** positivo = o peso real "
         "ficou acima do previsto."
     )

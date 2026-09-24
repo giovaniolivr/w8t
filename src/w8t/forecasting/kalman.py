@@ -47,7 +47,8 @@ class KalmanSmoothTrend(ForecastModel):
         daily = series.asfreq("D")  # missing days become NaN - handled by the filter, not filled
         model = UnobservedComponents(daily, level="strend")
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")  # statsmodels warns liberally; convergence checked below
+            # statsmodels warns liberally; convergence is checked explicitly below
+            warnings.simplefilter("ignore")
             result = model.fit(disp=False)
             if not result.mle_retvals.get("converged", False):
                 # L-BFGS flags "not converged" when the optimum sits on the boundary

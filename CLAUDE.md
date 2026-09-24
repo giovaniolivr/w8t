@@ -177,7 +177,7 @@ GitHub para os quadrados verdes contarem.
 ## Estado atual
 
 Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia, backtesting) + forecasting engine (baselines + Holt amortecido + Kalman) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+tendência/platô/anomalia, backtesting) + forecasting engine completo (baselines, Holt amortecido, Kalman, GPR) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -348,6 +348,36 @@ Feito:
     0,34 kg vs 0,35 real da demo) e o *smoother* para descrição do passado / reconstrução de
     gaps. Backtesting na página agora ~17 s no primeiro carregamento (cacheado).
 
+- **GPR (roadmap passo 5) — completo (2026-09-24).**
+  - `src/w8t/forecasting/gpr.py`: `GPRLinearRBF(60)` — `GaussianProcessRegressor` sobre os
+    últimos 60 dias, tempo contínuo (dia faltante só não é ponto de treino). Kernel
+    `C·DotProduct + C·RBF + WhiteKernel`, `normalize_y`, 1 restart. Desvio preditivo inclui o
+    WhiteKernel → intervalo de medição. Expõe `noise_sd`.
+  - **Seleção de kernel/janela** (demo, walk-forward passo 3 dias, 30-37 casos/horizonte, vs.
+    Holt; MAE h=14 / h=30, cobertura h=30): RBF 60d 0,44/1,09, 77% · RBF 120d 0,54/1,46, 67% ·
+    Matérn-3/2 60d 0,41/0,91, 90% · Matérn-3/2 120d 0,41/1,02, 83% · linear+RBF 120d 0,46/1,15,
+    77% · **linear+RBF 60d 0,37/0,85, 80%** · Holt 0,34/0,76, 97%. Kernels estacionários revertem
+    à média da janela (viés ≈ −0,5 kg em h=30: preveem reganho). **Viés de seleção:** escolhido
+    na mesma série em que é avaliado.
+  - Na demo o RBF aprendido bate no limite inferior (length_scale=3 dias) → captura oscilação de
+    curto prazo; ruído estimado 0,345 kg (real 0,35).
+  - Testes: `tests/test_gpr.py` (gate por janela, só janela recente, gaps, ruído aprendido e
+    incluído no intervalo, segue tendência linear em vez de reverter à média, cobertura).
+  - **Resultado final na demo (passo 1 dia, 6 modelos, mesmos casos):**
+    | h | melhor MAE | MAE Holt | cobertura GPR / Holt / Kalman |
+    |---|---|---|---|
+    | 1 | GPR/regressão 0,290 | 0,294 | 93% / 90% / 92% |
+    | 7 | GPR 0,350 | 0,360 | 89% / 89% / 89% |
+    | 14 | GPR 0,356 | 0,378 | 90% / 94% / 90% |
+    | 30 | GPR 0,787 | 0,793 | 81% / 94% / 80% |
+    Diferenças de MAE entre GPR/Holt/Kalman/regressão são de centésimos de kg com ~90 casos
+    sobrepostos (autocorrelacionados) — **não há vencedor estatisticamente demonstrado**. Holt é
+    o único calibrado em horizonte longo; modelos com tendência não amortecida (regressão,
+    Kalman, GPR com DotProduct) ficam confiantes demais em h=30 e com viés positivo (seguem
+    prevendo perda dentro do platô).
+  - Página de previsão: backtesting agora a cada 2 dias (`BACKTEST_STEP_DAYS`) — 6 modelos em
+    passo diário levavam ~33 s no primeiro carregamento.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -357,12 +387,15 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): GPR (`scikit-learn` `GaussianProcessRegressor`) — kernel com
-componente de tendência suave + ruído branco (WhiteKernel) para o intervalo ser de medição.
-Dia faltante simplesmente não entra no treino (GPR é contínuo no tempo). Atenção a custo
-(O(n³)) no backtesting e a extrapolação: kernels estacionários revertem à média longe dos dados,
-o que pode ser bom (tipo amortecimento) ou ruim — o backtesting decide. Critério: comparar com
-Holt amortecido (atual melhor) nos mesmos casos.
+Próximo passo (não iniciado), recomendado antes de novos modelos — **rigor da comparação**:
+1. Teste de significância das diferenças de erro entre modelos (Diebold-Mariano com correção
+   para horizonte h, ou bootstrap em blocos pareado), já que previsões sobrepostas são
+   autocorrelacionadas.
+2. Benchmark multi-série: várias séries sintéticas com formas diferentes (cutting→platô,
+   bulk, manutenção ruidosa, gaps longos, mudança de regime) para mitigar o viés de seleção de
+   ter escolhido kernels/janelas olhando só a demo.
+Depois, no roadmap: revisão de tendência/platô/anomalia usando a posterior do GPR/smoother do
+Kalman, comparada contra os baselines → reconstrução de gaps → insights via LLM.
 
 Oportunidade registrada: usar o *smoother* do Kalman no dashboard como a categoria "estado
 filtrado-suavizado" (tendência subjacente com banda), claramente distinto das medições.
@@ -371,8 +404,7 @@ Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pod
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
-baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt e Kalman já feitos) →
-GPR (itens 6, 11-14) → revisão opcional de
+baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt, Kalman e GPR já feitos) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
 condicionada a viabilidade).
