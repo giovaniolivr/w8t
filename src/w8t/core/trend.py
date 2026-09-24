@@ -42,9 +42,16 @@ class LinearFit:
     intercept: float
     slope_stderr: float
     n: int
+    residual_sd: float
+    x_mean: float
+    sxx: float
 
     def predict(self, day: float) -> float:
         return self.intercept + self.slope * day
+
+    def prediction_se(self, day: float) -> float:
+        """Standard error for a *new observation* at ``day`` (OLS prediction interval)."""
+        return self.residual_sd * (1 + 1 / self.n + (day - self.x_mean) ** 2 / self.sxx) ** 0.5
 
 
 def linear_fit(days: np.ndarray, weights: np.ndarray) -> LinearFit:
@@ -60,7 +67,7 @@ def linear_fit(days: np.ndarray, weights: np.ndarray) -> LinearFit:
     intercept = float(weights.mean() - slope * x_mean)
     residuals = weights - (intercept + slope * days)
     sigma2 = float((residuals**2).sum() / (n - 2))
-    return LinearFit(slope, intercept, (sigma2 / sxx) ** 0.5, n)
+    return LinearFit(slope, intercept, (sigma2 / sxx) ** 0.5, n, sigma2**0.5, float(x_mean), sxx)
 
 
 def days_since(index: pd.DatetimeIndex, origin: pd.Timestamp) -> np.ndarray:

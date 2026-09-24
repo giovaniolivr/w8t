@@ -252,6 +252,27 @@ Feito:
     anomalia plantada, só-passado, não-contaminação, série não modificada) e caso de UI em
     `tests/test_home_page.py`.
 
+- **Forecasting engine — interface + baselines (roadmap passos 1-2) — completo (2026-09-24).**
+  Ainda sem tela: previsão só vai para a UI depois do backtesting existir.
+  - `src/w8t/forecasting/base.py`: `ForecastModel` (`fit(series)` → `predict(horizons, level)`
+    → `Forecast` com média + `lower`/`upper`; não existe método só-ponto). Horizonte em dias de
+    calendário após a última medição. Auto-gate: `fit` levanta `InsufficientDataError` com
+    motivo legível; rejeita série fora de ordem. Modelo só vê a série que recebe — quem chama
+    (backtesting) garante que é só passado.
+  - `src/w8t/forecasting/baselines.py`: `NaiveLastValue` (passeio aleatório; σ²/dia estimado de
+    (Δy)²/Δt, respeita espaçamento irregular; intervalo ∝ √h), `MovingAverage(7)` (nível = média
+    da janela; intervalo = dp dos próprios erros one-step passados, **constante no horizonte** —
+    ingenuidade proposital, backtesting deve mostrar subcobertura em horizonte longo),
+    `LinearTrend(28)` (OLS na janela; intervalo de predição t-Student, alarga com a distância;
+    assume tendência continuando — quebra em platô). `baseline_models()` lista os três.
+  - `core/trend.LinearFit` ganhou `residual_sd`/`x_mean`/`sxx`/`prediction_se()`.
+  - Testes: `tests/test_forecasting.py` (contrato, gates, valores exatos, espaçamento irregular,
+    janela, alargamento, e **cobertura empírica ~95%** do intervalo da regressão quando as
+    premissas valem — 400 simulações).
+  - Observação na demo: origem no meio do cutting, `LinearTrend` prevê 79,5 kg em h=30 (IC
+    78,0–81,1) enquanto o peso real estabilizou ~80,7 — exemplo concreto do que o backtesting
+    precisa quantificar.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -261,10 +282,11 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): forecasting engine (spec itens 6, 11-14) — interface plugável
-fit/predict/uncertainty em `src/w8t/forecasting/`, começando pelos baselines (último valor, média
-móvel, regressão linear) antes de Holt, Kalman e GPR. Cada modelo se auto-gate conforme dado
-disponível; previsão sempre com intervalo.
+Próximo passo (não iniciado): backtesting walk-forward (spec item 15) em
+`src/w8t/forecasting/backtest.py` — origens sucessivas, cada modelo ajustado só com dados até a
+origem, métricas por horizonte (MAE, RMSE e **cobertura do intervalo**), comparação lado a lado
+dos baselines. Construir antes de Holt/Kalman/GPR para que cada modelo novo já nasça sendo
+comparado. Depois: Holt → Kalman (filter para avaliação, smoother para descrição) → GPR.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
