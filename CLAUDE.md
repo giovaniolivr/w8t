@@ -158,8 +158,9 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **item 1 da spec concluído** (registro diário de peso) **+ `Period` no data layer**
-(entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos" acima). Repo
+Fase: **itens 1 e 2 da spec concluídos** (registro diário de peso + dashboard) **+ `Period` no
+data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
 Feito:
@@ -169,7 +170,6 @@ Feito:
 - `pyproject.toml` com dependências via `uv` (grupo dev: pytest/ruff; extras: `postgres`,
   `insights`).
 - `src/w8t/config.py`: settings via `pydantic-settings`, modo `local`/`demo`, `.env.example`.
-- Entrypoint Streamlit mínimo (`src/w8t/app/Home.py`).
 - **Registro diário de peso (spec item 1) — completo:**
   - `src/w8t/data/models.py`: `WeightEntry` (data, peso, horário opcional, unique constraint por
     `entry_date` — um registro por dia).
@@ -186,8 +186,26 @@ Feito:
     `tests/test_registro_de_peso_page.py` (via `streamlit.testing.v1.AppTest` — carrega a página
     de verdade e simula preencher/enviar o formulário, sem navegador).
 - **`Period` (períodos/ciclos) — completo**, ver seção "Períodos/ciclos" acima para detalhes de
-  arquivo. Migração `86da55a7e986`. Ainda não consumido por nenhuma análise (não há análise além
-  do CRUD ainda).
+  arquivo. Migração `86da55a7e986`. Consumido pelo dashboard como escopo de análise.
+- **Dashboard principal (spec item 2) — completo (2026-09-24):**
+  - `src/w8t/core/metrics.py` (stats engine, puro, sem acesso a banco): `to_series` (série
+    indexada e ordenada por `entry_date`, rejeita data duplicada), `slice_series` (escopo
+    inclusivo), `rolling_mean` (janela de calendário `7D`/`30D` só sobre medições reais — sem
+    reamostrar/interpolar; `NaN` se a janela tiver menos que `ROLLING_MIN_OBS` = 3 em 7d, 8 em
+    30d), `pace_kg_per_week` (inclinação OLS sobre datas reais; exige ≥3 medições cobrindo ≥7
+    dias), `summarize` → `Summary` (atual/inicial/mín/máx com datas, variação kg/%, ritmo, MM7/
+    MM30 na última data). Métrica sem dado suficiente vira `None` → UI mostra "dados
+    insuficientes".
+  - `src/w8t/app/Home.py` é o dashboard (primeira tela, decisão do usuário): seletor de escopo
+    (histórico completo ou um `Period`; período em andamento vai até hoje), cartões de KPI,
+    meta do período quando houver, gráfico Plotly com medição real em pontos e médias móveis em
+    linha (derivadas, visualmente distintas). Médias do gráfico e dos cartões usam a mesma série
+    escopada, para os números baterem.
+  - Escopo por período é feito por intervalo de datas (`slice_series`), não por
+    `get_period_for_date`.
+  - Testes: `tests/test_metrics.py` (valores calculados à mão, gaps, janela, ordem de inserção,
+    espaçamento irregular) e `tests/test_home_page.py` (AppTest: vazio, KPIs, escopo por
+    período, período sem registros).
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
@@ -198,13 +216,14 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): dashboard principal (spec item 2) — médias móveis, peso
-atual/inicial/mín/máx, variação, ritmo, com opção de escopo por período (usando
-`periods.get_period_for_date`) ou histórico inteiro. A lógica de cálculo deve nascer em `core/`
-(stats engine, determinístico, sem ML) com testes próprios antes de virar tela.
+Próximo passo (não iniciado): tendência/platô/anomalia com baselines simples (itens 8-10) —
+inclinação de janela móvel, z-score/MAD — em `core/`, com testes, antes de virar tela.
 
-Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period` já feito) →
-dashboard (item 2) → tendência/platô/anomalia com baselines simples (itens 8-10) → forecasting
+Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
+depois, se necessário.
+
+Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period` e dashboard já
+feitos) → tendência/platô/anomalia com baselines simples (itens 8-10) → forecasting
 engine com Kalman/GPR (itens 6, 11-14) → backtesting (item 15) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
