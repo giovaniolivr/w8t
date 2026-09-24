@@ -543,8 +543,8 @@ Feito:
     Gemini com rede simulada: formato do request, erros, chave nunca vaza; texto da demo
     verificado contra o resumo) e `tests/test_resumo_page.py` (sem chave, só gera ao clicar,
     números inventados sinalizados, demo nunca chama a API). Nenhum teste chama a API real.
-  - Pendência: `pyproject.toml` trocou o extra `insights` de `anthropic` para `requests`;
-    **`uv.lock` precisa ser regenerado com `uv lock`** (uv não estava no PATH da sessão).
+  - `pyproject.toml`: extra `insights` trocado de `anthropic` para `requests`; `uv.lock`
+    regenerado pelo usuário.
   - Privacidade: no plano gratuito os termos do Google permitem usar o conteúdo enviado para
     melhorar produtos; só números agregados são enviados, e só quando o usuário clica.
 
