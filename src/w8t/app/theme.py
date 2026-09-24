@@ -18,3 +18,8 @@ TARGET = GRAY
 # from both the gray measurements and the green derived lines.
 ANOMALY = "#F59E0B"
 PLATEAU_FILL = "rgba(156, 163, 175, 0.12)"
+
+# Forecasts are derived values (green family) but must never look like a measured line:
+# dashed mean + translucent interval band.
+FORECAST = GREEN
+FORECAST_BAND = "rgba(34, 197, 94, 0.15)"

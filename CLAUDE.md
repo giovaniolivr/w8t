@@ -175,8 +175,8 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **itens 1, 2 e 8-10 (baselines) da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
+Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
+tendência/platô/anomalia, backtesting) + forecasting engine com baselines **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
 acima). Repo
 público em `github.com/giovaniolivr/w8t`.
 
@@ -253,7 +253,7 @@ Feito:
     `tests/test_home_page.py`.
 
 - **Forecasting engine — interface + baselines (roadmap passos 1-2) — completo (2026-09-24).**
-  Ainda sem tela: previsão só vai para a UI depois do backtesting existir.
+  Na UI a partir do backtesting (ver abaixo).
   - `src/w8t/forecasting/base.py`: `ForecastModel` (`fit(series)` → `predict(horizons, level)`
     → `Forecast` com média + `lower`/`upper`; não existe método só-ponto). Horizonte em dias de
     calendário após a última medição. Auto-gate: `fit` levanta `InsufficientDataError` com
@@ -273,6 +273,31 @@ Feito:
     78,0–81,1) enquanto o peso real estabilizou ~80,7 — exemplo concreto do que o backtesting
     precisa quantificar.
 
+- **Backtesting walk-forward (spec item 15) — completo (2026-09-24).**
+  - `src/w8t/forecasting/backtest.py`: `forecast_origins` (datas reais, após aquecimento de 28
+    dias, espaçadas ≥ `step_days`), `walk_forward` (cópia nova do modelo por origem, ajustada só
+    com dados ≤ origem; pontuada só se existe medição real exatamente na data-alvo — gap nunca
+    vira "verdade" interpolada; modelo que recusa ajuste vai para `skipped` com o motivo),
+    `summarize` (MAE, RMSE, viés = real − previsto, cobertura empírica do IC, largura média,
+    `skill_vs_ref` = 1 − MAE/MAE_ref). **Por padrão compara só casos que todos os modelos
+    previram** (`common_only`) — senão um modelo que pula origens difíceis ganharia de graça.
+  - Testes: `tests/test_backtest.py` (modelo espião prova que nunca vê dado após a origem; alvo
+    faltante não é pontuado; métricas com valores conhecidos; gate + casos comuns; skill; série
+    de entrada intacta).
+  - `src/w8t/app/pages/3_Previsao.py`: tabela de backtesting (passo diário, cacheada), seletor
+    de modelo com o de menor MAE médio pré-selecionado, gráfico com medições (cinza) + previsão
+    tracejada + faixa do IC (verde translúcido, cores em `theme.FORECAST*`), tabela h=1/7/14/30
+    e legenda com a **cobertura real medida** do modelo escolhido ao lado do intervalo nominal.
+    Estados: sem registros; histórico curto (explica por que não há avaliação, mas prevê se o
+    modelo aceitar); modelo que não pode ajustar (mostra o motivo). Testes em
+    `tests/test_previsao_page.py`. Escopo: sempre histórico completo (sem seletor de período
+    por ora).
+  - **Resultados na demo (passo 1 dia, ~80-100 casos por horizonte):** regressão 28d vence em
+    todos os horizontes (ganho vs. último valor 16% em h=1 a 32% em h=14), mas cobertura cai
+    para 75% em h=30 com viés +0,53 kg (continua prevendo perda depois do platô). Média móvel:
+    cobertura 86% → 53% conforme o horizonte (intervalo constante). Último valor: cobertura
+    ~100% às custas de IC de 9,5 kg em h=30 — alta cobertura com intervalo inútil não é mérito.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -282,18 +307,18 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (não iniciado): backtesting walk-forward (spec item 15) em
-`src/w8t/forecasting/backtest.py` — origens sucessivas, cada modelo ajustado só com dados até a
-origem, métricas por horizonte (MAE, RMSE e **cobertura do intervalo**), comparação lado a lado
-dos baselines. Construir antes de Holt/Kalman/GPR para que cada modelo novo já nasça sendo
-comparado. Depois: Holt → Kalman (filter para avaliação, smoother para descrição) → GPR.
+Próximo passo (não iniciado): Holt / exponential smoothing com tendência amortecida
+(`statsmodels`), plugado na mesma interface e entrando direto na tabela de backtesting. Depois
+Kalman (`UnobservedComponents`, local linear trend; *filter* para previsão/avaliação) e GPR.
+Critério de sucesso de cada modelo novo: melhorar MAE **e** trazer a cobertura para perto de 95%
+em horizontes longos (onde os baselines falham), nos mesmos casos.
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
-Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard e
-baselines de tendência/platô/anomalia já feitos) → forecasting
-engine com Kalman/GPR (itens 6, 11-14) → backtesting (item 15) → revisão opcional de
+Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
+baselines de tendência/platô/anomalia, forecasting baselines e backtesting já feitos) → Holt →
+Kalman → GPR (itens 6, 11-14) → revisão opcional de
 tendência/platô/anomalia usando a posterior do GPR, comparada contra o baseline via backtesting →
 reconstrução de gaps (reusa Kalman/GPR já validados) → camada de insights via LLM (última fase,
 condicionada a viabilidade).
