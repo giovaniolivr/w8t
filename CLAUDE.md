@@ -632,6 +632,29 @@ Feito:
     pré-preencher) e `test_home_page.py` (abre no período atual, sugestão na virada, ignorar,
     sem sugestão quando alinhado). 216 testes.
 
+- **Navegação, barra recolhível e previsão por período (2026-09-24).**
+  - Entrada agora é `src/w8t/app/app.py` (`st.navigation` + `st.Page`): títulos com acento
+    ("Dashboard", "Períodos", "Previsão"...), ícones Material, URLs ASCII (`/registro`,
+    `/periodos`, `/previsao`, `/lacunas`, `/resumo`; dashboard em `/`). Páginas movidas de
+    `app/pages/` para `app/views/` — com `pages/` presente o Streamlit auto-registra as páginas no
+    modo antigo e abrir `/periodos` direto mostrava "Page not found". Cada página segue sendo
+    script independente (testado com AppTest); página nova precisa ser registrada em `app.py`.
+    `python -m w8t` aponta para `app.py`. Teste `tests/test_app_router.py`.
+  - Barra lateral recolhida vira **trilho de ícones de 72 px** em vez de sumir (CSS: o Streamlit
+    recolhe com `translateX(-300px)` + largura 1 px num flex; desfazer e fixar a largura basta).
+    Rótulos escondidos e mostrados como balão ao passar o mouse (`position: fixed` com `top:auto`
+    escapa do corte do trilho; `margin-top: -19px` medido no navegador para centralizar), botão
+    "«" escondido no trilho, logo completo troca pelo "8" (`static/icon.svg`). Logo refeito menor
+    (84×36, texto centrado com `dominant-baseline="central"`).
+  - **Previsão usa o período atual por padrão** (seletor "Dados usados", chave
+    `forecast_scope`; modelo em `forecast_model`). Experimento (cenários sintéticos com virada no
+    dia 90, origens após a virada, combinação Kalman+Holt): só o período vs. histórico — erro em
+    30 dias −13% em cutting→bulk (0,48 vs 0,56 kg) e −14% em cutting→platô (0,37 vs 0,43);
+    controle sem virada (bulk) +5% (0,47 vs 0,45, menos dados). Período curto demais para o modelo
+    recomendado → cai para o histórico completo com aviso. Resumo também abre no período atual
+    (exceto demo, cujo texto fixo é do histórico completo). `periods.period_containing` (lookup
+    puro) compartilhado.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,

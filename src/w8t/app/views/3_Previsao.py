@@ -4,7 +4,7 @@ import streamlit as st
 
 from w8t.app import theme, ui
 from w8t.core import metrics
-from w8t.data import repository
+from w8t.data import periods, repository
 from w8t.data.db import get_session
 from w8t.forecasting.backtest import (
     DEFAULT_HORIZONS,
@@ -30,13 +30,52 @@ ui.header(
 )
 
 with get_session() as session:
-    series = metrics.to_series(
+    full_series = metrics.to_series(
         (e.entry_date, e.weight_kg) for e in repository.list_entries(session)
     )
+    all_periods = periods.list_periods(session)
 
-if series.empty:
+if full_series.empty:
     st.info("Nenhum registro de peso ainda.")
     st.stop()
+
+# Scope: the current period (the user-declared regime) by default. On synthetic series with a
+# regime switch, forecasting from the current period only cut the 30-day error by 13-14% vs. the
+# full history (cutting->bulk 0.48 vs 0.56 kg; cutting->plateau 0.37 vs 0.43); without a switch it
+# was ~5% worse (less data) - periods pay off exactly when they mark a real change. A period too
+# short for the recommended model falls back to the full history.
+current = periods.period_containing(all_periods, full_series.index[-1].date())
+period_series = (
+    metrics.slice_series(full_series, current.start_date, current.end_date)
+    if current is not None else None
+)
+
+
+def _fits(s) -> bool:
+    try:
+        kalman_holt_ensemble().fit(s)
+        return True
+    except InsufficientDataError:
+        return False
+
+
+scope_options = {"Histórico completo": full_series}
+if current is not None:
+    scope_options = {f"Período atual — {current.label}": period_series} | scope_options
+period_ok = period_series is not None and _fits(period_series)
+scope = st.selectbox(
+    "Dados usados",
+    list(scope_options),
+    index=0 if period_ok else len(scope_options) - 1,
+    help="Por padrão, só o período atual: as previsões respeitam a fase que você definiu.",
+    key="forecast_scope",
+)
+series = scope_options[scope]
+if current is not None and not period_ok and scope.startswith("Histórico"):
+    st.caption(
+        f"O período atual tem {len(period_series)} medição(ões) — ainda pouco para o modelo "
+        "recomendado; usando o histórico completo."
+    )
 
 
 @st.cache_data(show_spinner="Rodando backtesting...")
@@ -152,7 +191,8 @@ def _can_fit(name: str) -> bool:
 
 # Default: the recommended model if the history allows it, else the first one that fits.
 default = next((i for i, n in enumerate(names) if _can_fit(n)), 0)
-choice = st.selectbox("Modelo", names, index=default, format_func=labels.get)
+choice = st.selectbox("Modelo", names, index=default, format_func=labels.get,
+                      key="forecast_model")
 st.caption(
     "**Recomendado** por padrão: no benchmark com 30 séries sintéticas de regimes diferentes "
     "(docs/benchmark.md), a combinação Kalman + Holt foi a única calibrada (~95% de cobertura) "

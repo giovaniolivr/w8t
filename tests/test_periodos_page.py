@@ -9,7 +9,7 @@ import w8t.data.db as db_module
 from w8t.data.models import Base
 
 PAGE_PATH = str(
-    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "pages" / "2_Periodos.py"
+    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "views" / "2_Periodos.py"
 )
 
 

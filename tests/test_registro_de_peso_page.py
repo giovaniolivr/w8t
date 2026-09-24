@@ -12,7 +12,7 @@ from w8t.data.models import Base, GoalDirection
 
 TODAY = date.today()  # noqa: DTZ011 - the page defaults to the local calendar day
 PAGE_PATH = str(
-    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "pages" / "1_Registro_de_Peso.py"
+    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "views" / "1_Registro_de_Peso.py"
 )
 
 

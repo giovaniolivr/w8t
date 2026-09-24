@@ -37,7 +37,10 @@ def _option(p) -> str:
 
 
 options = {FULL_HISTORY: None} | {_option(p): p for p in reversed(all_periods)}
-scope = options[st.selectbox("Escopo", list(options))]
+# Current period by default (same as the dashboard); the demo's fixed text covers the full history.
+current = periods_repo.period_containing(all_periods, series.index[-1].date())
+default = 0 if settings.is_demo or current is None else list(options.values()).index(current)
+scope = options[st.selectbox("Escopo", list(options), index=default)]
 
 today = date.today()
 summary = build_summary(series, all_periods, scope, today)

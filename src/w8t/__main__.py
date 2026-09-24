@@ -1,6 +1,6 @@
 """Local entry point, Django-style:
 
-    python -m w8t            # starts the app (streamlit run src/w8t/app/Home.py)
+    python -m w8t            # starts the app (streamlit run src/w8t/app/app.py)
     python -m w8t migrate    # applies database migrations (alembic upgrade head)
 
 Extra arguments after ``python -m w8t`` go to Streamlit, e.g. ``python -m w8t --server.port 8600``.
@@ -12,7 +12,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-HOME = Path(__file__).parent / "app" / "Home.py"
+ENTRY = Path(__file__).parent / "app" / "app.py"
 
 
 def main(argv: list[str]) -> int:
@@ -24,7 +24,7 @@ def main(argv: list[str]) -> int:
 
     from streamlit.web import cli as stcli
 
-    sys.argv = ["streamlit", "run", str(HOME), *argv]
+    sys.argv = ["streamlit", "run", str(ENTRY), *argv]
     return stcli.main()
 
 

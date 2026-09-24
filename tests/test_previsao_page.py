@@ -8,13 +8,13 @@ from sqlalchemy.orm import sessionmaker
 from streamlit.testing.v1 import AppTest
 
 import w8t.data.db as db_module
-from w8t.data import repository
-from w8t.data.models import Base
+from w8t.data import periods, repository
+from w8t.data.models import Base, GoalDirection
 from w8t.forecasting.registry import all_models, kalman_holt_ensemble
 
 TODAY = date.today()  # noqa: DTZ011 - entries are relative to "today" like real usage
 PAGE_PATH = str(
-    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "pages" / "3_Previsao.py"
+    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "views" / "3_Previsao.py"
 )
 
 
@@ -57,7 +57,7 @@ def test_short_history_explains_why_no_evaluation(app):
     assert "histórico suficiente para avaliar" in at.info[0].value
     # Too short for the recommended ensemble (Kalman/Holt need 14 points) -> falls back to the
     # first model that can fit, and still forecasts with an interval.
-    assert at.selectbox[0].value != kalman_holt_ensemble().name
+    assert at.selectbox(key="forecast_model").value != kalman_holt_ensemble().name
     assert "Intervalo 95% (kg)" in at.dataframe[-1].value.columns
 
 
@@ -69,10 +69,10 @@ def test_backtest_table_and_best_model_preselected(app):
     evaluation = at.dataframe[0].value
     assert set(evaluation["Modelo"]) == {m.name for m in all_models()}
     # The benchmark-recommended ensemble is the default; the lowest-MAE model is labelled.
-    assert at.selectbox[0].value == kalman_holt_ensemble().name
+    assert at.selectbox(key="forecast_model").value == kalman_holt_ensemble().name
     best = evaluation.groupby("Modelo")["MAE (kg)"].mean().idxmin()
     if best != kalman_holt_ensemble().name:
-        assert f"{best} (menor erro neste histórico)" in at.selectbox[0].options
+        assert f"{best} (menor erro neste histórico)" in at.selectbox(key="forecast_model").options
     assert any("cobertura real foi" in c.value for c in at.caption)
 
 
@@ -97,3 +97,29 @@ def test_significance_table_is_shown(app):
     # ~90 days of history: 30-day comparisons can't have enough independent cases.
     h30 = table[table["Horizonte (dias)"] == 30]
     assert (h30["Conclusão"] == "não testável: poucos casos independentes").all()
+
+
+def _seed_with_period(n_days, period_start_ago):
+    _seed(n_days)
+    with db_module.get_session() as session:
+        periods.create_period(
+            session, label="Fase", goal_direction=GoalDirection.LOSS,
+            start_date=TODAY - timedelta(days=period_start_ago),
+        )
+
+
+def test_defaults_to_current_period_when_it_has_enough_data(app):
+    _seed_with_period(90, 40)
+    at = app.run()
+
+    assert not at.exception
+    assert at.selectbox(key="forecast_scope").value.startswith("Período atual")
+
+
+def test_short_current_period_falls_back_to_full_history(app):
+    _seed_with_period(90, 5)
+    at = app.run()
+
+    assert not at.exception
+    assert at.selectbox(key="forecast_scope").value == "Histórico completo"
+    assert any("ainda pouco para o modelo" in c.value for c in at.caption)

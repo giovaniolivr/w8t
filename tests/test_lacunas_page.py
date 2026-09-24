@@ -13,7 +13,7 @@ from w8t.data.models import Base, WeightEntry
 
 TODAY = date.today()  # noqa: DTZ011 - entries are relative to "today" like real usage
 PAGE_PATH = str(
-    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "pages" / "4_Lacunas.py"
+    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "views" / "4_Lacunas.py"
 )
 
 

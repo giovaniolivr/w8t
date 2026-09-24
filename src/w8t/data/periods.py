@@ -190,3 +190,10 @@ def start_including_uncovered(session: Session, entry_date: date) -> date:
     earlier = [e.entry_date for e in uncovered_entries(session)
                if prev_end < e.entry_date <= entry_date]
     return min([*earlier, entry_date])
+
+
+def period_containing(all_periods: list[Period], target: date) -> Period | None:
+    """Pure lookup (no session): the period whose range contains ``target``."""
+    return next(
+        (p for p in all_periods if p.start_date <= target <= (p.end_date or _MAX_DATE)), None
+    )

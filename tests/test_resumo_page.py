@@ -15,7 +15,7 @@ from w8t.insights import providers
 
 TODAY = date.today()  # noqa: DTZ011 - entries are relative to "today" like real usage
 PAGE_PATH = str(
-    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "pages" / "5_Resumo.py"
+    Path(__file__).resolve().parents[1] / "src" / "w8t" / "app" / "views" / "5_Resumo.py"
 )
 
 

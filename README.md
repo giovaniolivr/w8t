@@ -63,7 +63,7 @@ uv run pytest
 
 ```
 src/w8t/
-  app/           # Streamlit UI (entrypoint: Home.py, páginas em app/pages/)
+  app/           # Streamlit UI (entrypoint: app.py com st.navigation; páginas em app/views/)
   core/          # stats engine — cálculos determinísticos (médias, tendência, platô...)
   forecasting/   # modelos de previsão plugáveis (estatísticos/ML) + backtesting
   data/          # modelos SQLAlchemy, sessão de banco, repositórios

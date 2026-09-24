@@ -16,6 +16,7 @@ STATIC = Path(__file__).parent / "static"
 LOGO = STATIC / "logo.svg"
 ICON = STATIC / "icon.svg"
 _LOGO_B64 = base64.b64encode(LOGO.read_bytes()).decode()
+_ICON_B64 = base64.b64encode(ICON.read_bytes()).decode()
 
 CSS = """
 <style>
@@ -151,15 +152,64 @@ button, input, textarea, [data-testid="stMetricValue"], [data-testid="stMetricDe
   border: 1px solid rgba(34, 197, 94, 0.3); margin-right: 6px;
 }
 
-/* Logo link pinned to the sidebar's header area (hidden with the sidebar collapsed) */
+/* Logo link pinned to the sidebar's header area */
 .w8t-logo-link {
-  position: fixed; top: 14px; left: 18px; z-index: 999990; display: block;
+  position: fixed; top: 18px; left: 20px; z-index: 999990; display: block;
   transition: transform .2s ease, filter .2s ease;
 }
-.w8t-logo-link img { height: 46px; display: block; }
-.w8t-logo-link:hover { transform: translateY(-1px) scale(1.03); filter: drop-shadow(0 6px 14px rgba(34,197,94,.35)); }
-[data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-link { display: none; }
+.w8t-logo-link img { height: 32px; display: block; }
+.w8t-logo-link .w8t-logo-mini { display: none; }
+.w8t-logo-link:hover {
+  transform: translateY(-1px) scale(1.04);
+  filter: drop-shadow(0 6px 14px rgba(34, 197, 94, .35));
+}
 [data-testid="stSidebarHeader"] { min-height: 64px; }
+
+/* Collapsed sidebar = slim icon rail instead of disappearing. Streamlit collapses it by sliding
+   it -300px and shrinking it to 1px inside a flex row, so undoing that and fixing the width is
+   enough - the main area reflows by itself. */
+[data-testid="stSidebar"][aria-expanded="false"] {
+  transform: none !important;
+  width: 72px !important; min-width: 72px !important; max-width: 72px !important;
+}
+[data-testid="stSidebar"][aria-expanded="false"] > div {
+  width: 72px !important; min-width: 72px !important; max-width: 72px !important;
+  overflow-x: hidden;
+}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNav"] { padding-top: 64px; }
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"] {
+  justify-content: center; padding: 9px 0; margin: 4px 12px;
+}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"]
+  [data-testid="stMarkdownContainer"] p { margin: 0; }
+/* the "collapse" chevron makes no sense on the rail; the "expand" one stays in the header */
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarHeader"] button {
+  display: none;
+}
+/* Page name as a tooltip on hover. position: fixed with top:auto keeps its natural vertical
+   position while escaping the rail's overflow clipping. */
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"]
+  [data-testid="stMarkdownContainer"] {
+  position: fixed; left: 76px; opacity: 0; pointer-events: none; white-space: nowrap;
+  margin-top: -19px;  /* measured: static position sits 19px below the icon's center */
+  background: var(--w8t-surface-2); border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: 8px; padding: 4px 10px; box-shadow: var(--w8t-shadow);
+  transition: opacity .15s ease, transform .15s ease; transform: translateX(-4px);
+  z-index: 1000000;
+}
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"]:hover
+  [data-testid="stMarkdownContainer"] { opacity: 1; transform: translateX(0); }
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavLink"]
+  [data-testid="stIconMaterial"] { font-size: 1.35rem; }
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] .stButton,
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarUserContent"] hr,
+[data-testid="stSidebar"][aria-expanded="false"] [data-testid="stSidebarNavSeparator"] {
+  display: none;
+}
+/* ...and the full logo becomes the "8" mark, below the expand button. */
+[data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-link { top: 58px; left: 18px; }
+[data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-full { display: none; }
+[data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-mini { display: block; height: 36px; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -197,8 +247,10 @@ def setup(page_title: str, page_icon: str = ":chart_with_downwards_trend:") -> N
     # HTML link with target="_self", pinned to the sidebar's top-left corner via CSS.
     st.sidebar.markdown(
         f'<a class="w8t-logo-link" href="{_home_url() or "./"}" target="_self" '
-        f'title="Voltar ao dashboard"><img src="data:image/svg+xml;base64,{_LOGO_B64}" '
-        'alt="w8t"></a>',
+        f'title="Voltar ao dashboard">'
+        f'<img class="w8t-logo-full" src="data:image/svg+xml;base64,{_LOGO_B64}" alt="w8t">'
+        f'<img class="w8t-logo-mini" src="data:image/svg+xml;base64,{_ICON_B64}" alt="w8t">'
+        "</a>",
         unsafe_allow_html=True,
     )
 
