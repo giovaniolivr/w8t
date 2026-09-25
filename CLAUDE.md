@@ -740,6 +740,16 @@ Feito:
     JSON que o LLM recebe; texto num cartão com selo ("Números verificados" / "a conferir").
   - Testes novos: peso inicial do formulário, exclusão com confirmação, gráfico da lacuna antes
     de estimar só com medições. 234 testes.
+  - Previsão reorganizada: previsão primeiro (controles escopo + modelo num cartão, faixa 7/14/30
+    dias com IC e cobertura medida em 30 d, gráfico), avaliação depois: tabela compacta de 7
+    linhas (erro por horizonte + cobertura no mais longo, ordenada pelo erro médio — o mesmo
+    critério do rótulo "menor erro"), selos Recomendado / Menor erro, conclusão do teste DM numa
+    frase; tabela completa (28 linhas) e tabela DM em expanders. Cobertura sem casas decimais.
+  - Legenda de todos os gráficos passou para baixo do gráfico (abaixo da mini-régua no
+    dashboard), alinhada à esquerda: no topo ela dividia a linha com os botões 7d/1m/... e, em
+    janela estreita, quebrava por cima deles (verificado no navegador; não era fonte carregando
+    tarde, como suposto antes). Rótulo e delta das métricas quebram linha em vez de "…"; regra
+    2×2 só para linhas de 4 métricas.
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
@@ -757,9 +767,8 @@ Próximos passos (para a próxima sessão — escolher com o usuário):
    gratuito. Chave do Gemini NÃO vai para a demo (texto fixo).
 2. ~~Fine-tuning restante~~ — concluído em 2026-09-25 (ver acima). Possível ainda: pré-aquecer
    o cache do backtesting na demo publicada (1º carregamento ~25 s).
-3. ~~UI: polir Registro/Lacunas/Resumo; responsividade~~ — feito em 2026-09-25. Restam
-   detalhes: Previsão ainda no layout antigo (tabelas longas); legenda no topo dos gráficos do
-   dashboard pode cortar em janela estreita (medição de texto antes da fonte Inter carregar).
+3. ~~UI: polir todas as páginas; responsividade; legenda dos gráficos~~ — feito em
+   2026-09-25.
 4. Ideia registrada: sugestão de período também para períodos com data planejada (hoje só nos
    indefinidos, conforme pedido do usuário).
 

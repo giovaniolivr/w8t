@@ -105,9 +105,6 @@ fig.add_vrect(x0=pd.Timestamp(gap.start) - pd.Timedelta(hours=12),
               fillcolor=theme.PLATEAU_FILL, line_width=0, layer="below",
               annotation_text="lacuna", annotation_position="top left")
 theme.style_figure(fig, height=400, range_slider=False)
-# legend under the plot: on top it collided with the "lacuna" label and got clipped on the right
-fig.update_layout(legend={"y": -0.14, "x": 0, "xanchor": "left", "yanchor": "top"},
-                  margin={"b": 70})
 st.plotly_chart(fig, width="stretch", config=theme.PLOTLY_CONFIG)
 
 if result is None:

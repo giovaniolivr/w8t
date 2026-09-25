@@ -55,7 +55,12 @@ def style_figure(fig, *, height: int = 440, time_axis: bool = True, range_slider
         margin={"l": 10, "r": 10, "t": 56, "b": 10},
         hovermode="x unified",
         hoverlabel={"bgcolor": SURFACE, "bordercolor": GREEN, "font": {"color": TEXT}},
-        legend={"orientation": "h", "y": 1.12, "x": 1, "xanchor": "right", "bgcolor": "rgba(0,0,0,0)"},
+        # Legend under the plot (below the range slider when there is one), left-aligned so it can
+        # wrap freely. On top it shared the row with the 7d/1m/... buttons and, in a narrow window,
+        # wrapped over them.
+        legend={"orientation": "h", "x": 0, "xanchor": "left", "yanchor": "top",
+                "y": -0.24 if time_axis and range_slider else -0.1,
+                "bgcolor": "rgba(0,0,0,0)"},
         transition={"duration": 450, "easing": "cubic-in-out"},
         yaxis={"gridcolor": "rgba(255,255,255,0.06)", "zeroline": False, "title": "kg"},
     )

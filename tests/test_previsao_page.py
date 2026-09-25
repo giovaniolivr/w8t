@@ -58,7 +58,8 @@ def test_short_history_explains_why_no_evaluation(app):
     # Too short for the recommended ensemble (Kalman/Holt need 14 points) -> falls back to the
     # first model that can fit, and still forecasts with an interval.
     assert at.selectbox(key="forecast_model").value != kalman_holt_ensemble().name
-    assert "Intervalo 95% (kg)" in at.dataframe[-1].value.columns
+    tiles = " ".join(m.value for m in at.markdown)
+    assert "Em 30 dias" in tiles and "IC95%" in tiles
 
 
 def test_backtest_table_and_best_model_preselected(app):
@@ -66,11 +67,14 @@ def test_backtest_table_and_best_model_preselected(app):
     at = app.run()
 
     assert not at.exception
-    evaluation = at.dataframe[0].value
+    evaluation = at.dataframe[0].value  # compact: one row per model, error per horizon
     assert set(evaluation["Modelo"]) == {m.name for m in all_models()}
+    assert list(evaluation.columns[1:]) == ["Erro 1d", "Erro 7d", "Erro 14d", "Erro 30d", "Cobertura 30d"]
+    errors = evaluation.set_index("Modelo").filter(like="Erro").mean(axis=1)
+    assert errors.is_monotonic_increasing  # sorted by mean error, the "menor erro" criterion
     # The benchmark-recommended ensemble is the default; the lowest-MAE model is labelled.
     assert at.selectbox(key="forecast_model").value == kalman_holt_ensemble().name
-    best = evaluation.groupby("Modelo")["MAE (kg)"].mean().idxmin()
+    best = errors.idxmin()
     if best != kalman_holt_ensemble().name:
         assert f"{best} (menor erro neste histórico)" in at.selectbox(key="forecast_model").options
     assert any("cobertura real foi" in c.value for c in at.caption)
@@ -89,7 +93,7 @@ def test_significance_table_is_shown(app):
     at = app.run()
 
     assert not at.exception
-    table = at.dataframe[1].value
+    table = next(d.value for d in at.dataframe if "Conclusão" in d.value.columns)
     assert list(table.columns) == [
         "Horizonte (dias)", "Menor MAE", "Comparado com", "Casos independentes", "p (Holm)",
         "Conclusão",

@@ -254,9 +254,19 @@ button, input, textarea, [data-testid="stMetricValue"], [data-testid="stMetricDe
 @media (max-width: 1280px) {
   [data-testid="stMainBlockContainer"] { padding-left: 2rem; padding-right: 2rem; }
 }
-/* medium windows: rows of 4 metrics become a tidy 2x2 grid instead of 3 + 1 stretched */
+/* Metric label and delta wrap instead of ending in "..." (e.g. "TENDÊNCIA (KALMAN, 60 DIAS)" or
+   a trend's confidence interval in a row of three); the value itself stays on one line. */
+[data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"],
+[data-testid="stMetricLabel"] p,
+[data-testid="stMetricDelta"] [data-testid="stMarkdownContainer"],
+[data-testid="stMetricDelta"] p {
+  white-space: normal; overflow: visible; text-overflow: clip;
+}
+/* medium windows: rows of 4 metrics become a tidy 2x2 grid instead of 3 + 1 stretched (rows of 3
+   keep 3 across - the 160px minimum already fits them) */
 @media (max-width: 1150px) {
-  [data-testid="stColumn"]:has([data-testid="stMetric"]) { min-width: calc(50% - 1rem); }
+  [data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"]:nth-child(4))
+    > [data-testid="stColumn"]:has([data-testid="stMetric"]) { min-width: calc(50% - 1rem); }
   [class*="st-key-w8t-card"] [data-testid="stColumn"]:has([data-testid="stMetric"]) {
     min-width: 110px;
   }
