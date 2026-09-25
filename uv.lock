@@ -1575,6 +1575,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "plotly" },
+    { name = "psycopg", extra = ["binary"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "scikit-learn" },
@@ -1586,9 +1587,6 @@ dependencies = [
 [package.optional-dependencies]
 insights = [
     { name = "requests" },
-]
-postgres = [
-    { name = "psycopg", extra = ["binary"] },
 ]
 
 [package.dev-dependencies]
@@ -1603,7 +1601,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "pandas", specifier = ">=2.2" },
     { name = "plotly", specifier = ">=5.24" },
-    { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "requests", marker = "extra == 'insights'", specifier = ">=2.31" },
@@ -1612,7 +1610,7 @@ requires-dist = [
     { name = "statsmodels", specifier = ">=0.14" },
     { name = "streamlit", specifier = ">=1.38" },
 ]
-provides-extras = ["postgres", "insights"]
+provides-extras = ["insights"]
 
 [package.metadata.requires-dev]
 dev = [

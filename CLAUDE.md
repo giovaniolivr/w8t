@@ -751,6 +751,26 @@ Feito:
     tarde, como suposto antes). Rótulo e delta das métricas quebram linha em vez de "…"; regra
     2×2 só para linhas de 4 métricas.
 
+- **Deploy da demo — preparação do código (2026-09-25).**
+  - Streamlit Community Cloud procura dependências nesta ordem: `uv.lock`, Pipfile,
+    environment.yml, requirements.txt, pyproject.toml, e **usa só o primeiro** → usa o
+    `uv.lock`. Por isso `psycopg[binary]` virou dependência principal (extras podem não ser
+    instalados); extra `postgres` removido. `app.py` põe `src/` no `sys.path` se `w8t` não
+    estiver instalado.
+  - *Secrets* de nível raiz viram variáveis de ambiente quando carregados; `app.py` os carrega
+    antes de importar `w8t.config`. `config.py` converte `postgresql://`/`postgres://` (formato
+    do Neon) em `postgresql+psycopg://`. `db.py`: `pool_pre_ping` fora do SQLite (Neon grátis
+    suspende o banco ocioso).
+  - `demo.ensure_demo_data` (chamado pelo `app.py` no modo demo, cacheado 1 h): cria as tabelas
+    (`create_all` — banco da demo é descartável, sem Alembic), gera os dados se vazio e os
+    **renova se o último registro tiver > 3 dias** (a série é ancorada no dia em que foi gerada).
+    Nenhum passo manual de migração/reset no Neon.
+  - Simulado localmente: pasta isolada só com `.streamlit/secrets.toml` (sem `.env`) e SQLite
+    vazio → app sobe em modo demo e se popula sozinho. Postgres de verdade só testável com o Neon.
+  - Passos do usuário: Neon (projeto → connection string) → share.streamlit.io (repo
+    `giovaniolivr/w8t`, branch `main`, arquivo `src/w8t/app/app.py`, Python 3.12, *secrets*
+    `APP_ENV = "demo"` e `DATABASE_URL = "<string do Neon>"`). 238 testes.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -761,10 +781,8 @@ em variável de ambiente. Qualquer novo teste que precise de um banco isolado de
 padrão.
 
 Próximos passos (para a próxima sessão — escolher com o usuário):
-1. **Publicar a demo** no Streamlit Community Cloud: entrada `src/w8t/app/app.py`; banco Neon
-   (Postgres) com `DATABASE_URL` + `APP_ENV=demo` nos *secrets* (nunca no repo); rodar migrações
-   no Neon; reset da demo; conferir tempo do backtesting (~20 s no 1º carregamento) no plano
-   gratuito. Chave do Gemini NÃO vai para a demo (texto fixo).
+1. **Publicar a demo** — código preparado em 2026-09-25 (ver "Deploy da demo" abaixo); falta
+   o usuário criar o banco no Neon e o app no Streamlit Community Cloud.
 2. ~~Fine-tuning restante~~ — concluído em 2026-09-25 (ver acima). Possível ainda: pré-aquecer
    o cache do backtesting na demo publicada (1º carregamento ~25 s).
 3. ~~UI: polir todas as páginas; responsividade; legenda dos gráficos~~ — feito em

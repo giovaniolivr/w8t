@@ -11,11 +11,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import numpy as np
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from w8t.config import settings
-from w8t.data.models import GoalDirection, Period, WeightEntry
+from w8t.data.models import Base, GoalDirection, Period, WeightEntry
 
 SEED = 42
 N_DAYS = 180
@@ -27,6 +27,7 @@ NOISE_SD_KG = 0.35
 MISSING_RATE = 0.15
 ANOMALY_DAY = 60
 ANOMALY_KG = 2.5
+MAX_STALE_DAYS = 3  # older than this, the public demo regenerates itself (see ensure_demo_data)
 
 
 class NotDemoModeError(RuntimeError):
@@ -85,3 +86,27 @@ def reset_demo_data(session: Session, *, today: date) -> int:
     )
     session.flush()
     return len(points)
+
+
+def ensure_demo_data(session: Session, *, today: date) -> str | None:
+    """Keep the hosted demo usable without any manual step. Returns what it did, or None.
+
+    - Creates the tables when missing (the demo database is disposable, so the schema comes
+      straight from the models instead of Alembic).
+    - Seeds the synthetic dataset when there are no entries.
+    - Regenerates it when the newest entry is more than ``MAX_STALE_DAYS`` old: the series is
+      anchored to the day it was generated, so after a few weeks without a reset every analysis
+      would describe the past and the forecast would start weeks ago. A visitor's own recent
+      entry keeps the data as is.
+    """
+    if not settings.is_demo:
+        raise NotDemoModeError("Só roda com APP_ENV=demo.")
+    Base.metadata.create_all(session.get_bind())
+    last = session.scalar(select(WeightEntry.entry_date).order_by(WeightEntry.entry_date.desc()))
+    if last is None:
+        reset_demo_data(session, today=today)
+        return "seeded"
+    if (today - last).days > MAX_STALE_DAYS:
+        reset_demo_data(session, today=today)
+        return "refreshed"
+    return None

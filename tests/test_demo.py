@@ -57,3 +57,33 @@ def test_reset_replaces_existing_data(session, monkeypatch):
     assert n == len(entries) == len(demo.generate_series(TODAY))
     assert entries[0].entry_date != date(2020, 1, 1)
     assert [p.label for p in periods.list_periods(session)] == ["Cutting", "Manutenção"]
+
+
+def test_ensure_demo_data_refuses_outside_demo_mode(session, monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "local")
+    with pytest.raises(demo.NotDemoModeError):
+        demo.ensure_demo_data(session, today=TODAY)
+
+
+def test_ensure_demo_data_creates_tables_and_seeds_an_empty_database(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "demo")
+    engine = create_engine("sqlite:///:memory:")  # no tables at all, like a fresh Neon database
+    with Session(engine) as s:
+        assert demo.ensure_demo_data(s, today=TODAY) == "seeded"
+        assert repository.list_entries(s)[-1].entry_date == TODAY
+
+
+def test_ensure_demo_data_keeps_recent_data_and_refreshes_stale_data(session, monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "demo")
+    demo.reset_demo_data(session, today=TODAY)
+    # a visitor's edit within the freshness window is kept
+    repository.create_entry(session, entry_date=TODAY + timedelta(days=1), weight_kg=70.0)
+    later = TODAY + timedelta(days=1 + demo.MAX_STALE_DAYS)
+    assert demo.ensure_demo_data(session, today=later) is None
+    assert any(e.weight_kg == 70.0 for e in repository.list_entries(session))
+
+    much_later = later + timedelta(days=30)
+    assert demo.ensure_demo_data(session, today=much_later) == "refreshed"
+    entries = repository.list_entries(session)
+    assert entries[-1].entry_date == much_later
+    assert all(e.weight_kg != 70.0 for e in entries)

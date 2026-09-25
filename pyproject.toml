@@ -18,10 +18,12 @@ dependencies = [
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
     "plotly>=5.24",
+    # Core, not an extra: Streamlit Community Cloud installs from uv.lock and may skip extras,
+    # and the hosted demo runs on Postgres (Neon).
+    "psycopg[binary]>=3.2",
 ]
 
 [project.optional-dependencies]
-postgres = ["psycopg[binary]>=3.2"]
 insights = ["requests>=2.31"]
 
 [dependency-groups]

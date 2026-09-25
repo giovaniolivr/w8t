@@ -6,3 +6,12 @@ def test_defaults_to_local_sqlite():
     assert s.app_env == "local"
     assert s.database_url.startswith("sqlite:///")
     assert s.is_demo is False
+
+
+def test_hosted_postgres_urls_use_psycopg3():
+    host = "user:pw@ep-x.neon.tech/neondb?sslmode=require&channel_binding=require"
+    for scheme in ("postgresql://", "postgres://"):
+        s = Settings(_env_file=None, database_url=scheme + host)
+        assert s.database_url == "postgresql+psycopg://" + host
+    explicit = "postgresql+psycopg://" + host
+    assert Settings(_env_file=None, database_url=explicit).database_url == explicit
