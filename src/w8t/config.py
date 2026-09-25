@@ -37,23 +37,40 @@ class Settings(BaseSettings):
         return self.app_env == "demo"
 
 
+# What reading the Streamlit secrets found - key NAMES only, never values - so the hosted app
+# can explain a misconfiguration on screen (its logs are not visible from here).
+SECRETS_STATUS: dict = {"read": False, "error": None, "keys": []}
+
+
 def _streamlit_secrets() -> dict[str, str]:
     """Settings given as Streamlit secrets (hosted demo: Community Cloud's "Secrets" box).
 
     Read directly instead of relying on Streamlit copying root-level secrets into environment
     variables: that happens only once the secrets are parsed, and on the first hosted deploy the
     config had already been resolved without them (the app ran in local mode on an empty SQLite
-    file). Outside Streamlit, or with no secrets file, there is nothing to read.
+    file). Keys are accepted at the root or inside one section (e.g. ``[general]``); root wins.
+    Outside Streamlit, or with no secrets file, there is nothing to read.
     """
     try:
         import streamlit as st
 
         raw = st.secrets.to_dict()
-    except Exception:  # noqa: BLE001 - no runtime / no secrets file / parse error
+    except Exception as exc:  # noqa: BLE001 - no runtime / no secrets file / parse error
+        SECRETS_STATUS.update(read=False, error=type(exc).__name__, keys=[])
         return {}
+    names = []
+    for k, v in raw.items():
+        names += [f"{k}.{sub}" for sub in v] if isinstance(v, dict) else [str(k)]
+    SECRETS_STATUS.update(read=True, error=None, keys=sorted(names))
+
     fields = set(Settings.model_fields)
-    return {k.lower(): str(v) for k, v in raw.items()
-            if k.lower() in fields and isinstance(v, str | int | float)}
+    found: dict[str, str] = {}
+    for table in [raw, *(v for v in raw.values() if isinstance(v, dict))]:
+        for k, v in table.items():
+            key = str(k).lower()
+            if key in fields and key not in found and isinstance(v, str | int | float):
+                found[key] = str(v)
+    return found
 
 
 # Precedence: Streamlit secrets > environment variables > .env file > defaults.

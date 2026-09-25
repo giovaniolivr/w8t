@@ -35,3 +35,15 @@ def test_no_secrets_file_means_no_overrides():
     from w8t import config
 
     assert config._streamlit_secrets() == {}  # tests run without .streamlit/secrets.toml
+
+
+def test_secrets_inside_a_section_are_found_and_status_lists_names_only(monkeypatch):
+    import streamlit as st
+
+    from w8t import config
+
+    fake = {"general": {"APP_ENV": "demo", "DATABASE_URL": "postgres://u:secret@h/db"}}
+    monkeypatch.setattr(st, "secrets", type("S", (), {"to_dict": lambda self: fake})())
+    assert config._streamlit_secrets()["app_env"] == "demo"
+    assert config.SECRETS_STATUS["keys"] == ["general.APP_ENV", "general.DATABASE_URL"]
+    assert "secret" not in repr(config.SECRETS_STATUS)
