@@ -15,8 +15,13 @@ measurements:
   on both sides of the gap, which is the point here) - plus the weekly effect of that weekday
   when the model detected a weekly pattern - variance = smoothed signal variance + measurement
   noise.
-- ``gpr``: GPR (linear + RBF + white noise, the forecasting kernel) fitted on measurements within
-  ``GPR_CONTEXT_DAYS`` of the gap on both sides; predictive std includes the learned noise.
+- ``gpr``: GPR (linear + RBF + white noise) fitted on measurements within ``GPR_CONTEXT_DAYS`` of
+  the gap on both sides; predictive std includes the learned noise. Kernel/context re-examined on
+  2026-09-25 (docs/gaps_gpr_selection.md): 8 variants selected on held-out seeds, the winner
+  (linear + RBF + weekly periodic, 90 d) confirmed on the 48 standard series was NOT better -
+  its whole gain came from the weekly scenario, it lost after regime changes and won only 48%
+  of series (Wilcoxon p = 0.49); Matérn 3/2 90 d also tied (p = 0.72). Kept as is. The Kalman
+  stays the recommended method (and handles weekly patterns with automatic selection).
 
 Only interior gaps (measurements on both sides) are reconstructed - after the last entry it would
 be a forecast, which is the forecasting layer's job.
@@ -44,6 +49,7 @@ from w8t.patterns.kalman import _enough, detect_anomalies
 
 METHODS = ("linear", "kalman", "gpr")
 GPR_CONTEXT_DAYS = 45
+GPR_KERNEL = "linear + RBF"  # see the module docstring before changing
 MIN_CONTEXT_OBS = 8
 Z95 = float(stats.norm.ppf(0.975))
 
@@ -141,7 +147,7 @@ def _gpr(series: pd.Series, days: pd.DatetimeIndex):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         gp = GaussianProcessRegressor(
-            gpr_kernel(), normalize_y=True, n_restarts_optimizer=1, random_state=0
+            gpr_kernel(GPR_KERNEL), normalize_y=True, n_restarts_optimizer=1, random_state=0
         ).fit(x, context.to_numpy())
     x_new = (days - days[0]).days.to_numpy(dtype=float).reshape(-1, 1)
     mean, sd = gp.predict(x_new, return_std=True)

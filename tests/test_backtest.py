@@ -142,3 +142,39 @@ def test_input_series_is_not_modified():
     walk_forward(s, baseline_models(), horizons=[1, 7])
 
     assert s.equals(original)
+
+
+def test_cache_refits_only_new_origins_and_gives_identical_results():
+    s = series_from(np.sin(np.arange(80) / 5) + 80)
+    cache: dict = {}
+    first = walk_forward(s.iloc[:70], [SpyModel(), PickyModel()], horizons=[1, 7], step_days=3,
+                         min_history_days=10, cache=cache)
+    fits_before = len(SpyModel.seen_until)
+
+    SpyModel.seen_until = []
+    grown = walk_forward(s, [SpyModel(), PickyModel()], horizons=[1, 7], step_days=3,
+                         min_history_days=10, cache=cache)
+    refitted = list(SpyModel.seen_until)
+    fresh = walk_forward(s, [SpyModel(), PickyModel()], horizons=[1, 7], step_days=3,
+                         min_history_days=10)
+
+    # Only origins after day 69 were fitted again (refusals are cached too, not retried).
+    assert fits_before > 0
+    assert refitted and all(ts > s.index[69] for ts in refitted)
+    pd.testing.assert_frame_equal(grown.forecasts, fresh.forecasts)
+    pd.testing.assert_frame_equal(grown.skipped, fresh.skipped)
+    assert len(first.forecasts) < len(grown.forecasts)
+
+
+def test_cache_invalidated_by_retroactive_edit():
+    s = series_from(np.arange(40, dtype=float))
+    cache: dict = {}
+    walk_forward(s, [SpyModel()], horizons=[1], step_days=5, min_history_days=10, cache=cache)
+    edited = s.copy()
+    edited.iloc[12] += 5.0  # a past entry changes -> every origin from day 12 on must refit
+    SpyModel.seen_until = []
+    result = walk_forward(edited, [SpyModel()], horizons=[1], step_days=5, min_history_days=10,
+                          cache=cache)
+
+    assert SpyModel.seen_until == [o for o in result.forecasts["origin"].unique()
+                                   if o >= s.index[12]]

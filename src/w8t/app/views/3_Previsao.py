@@ -78,9 +78,22 @@ if current is not None and not period_ok and scope.startswith("Histórico"):
     )
 
 
+@st.cache_resource
+def _forecast_cache() -> dict:
+    """Per-origin forecasts, shared across reruns: after a new entry only new origins are fitted
+    (see ``walk_forward``). A few MB at most; cleared if it ever grows past the cap."""
+    return {}
+
+
+FORECAST_CACHE_MAX = 50_000
+
+
 @st.cache_data(show_spinner="Rodando backtesting...")
 def _backtest(s: pd.Series):
-    result = walk_forward(s, all_models(), step_days=BACKTEST_STEP_DAYS)
+    cache = _forecast_cache()
+    if len(cache) > FORECAST_CACHE_MAX:
+        cache.clear()
+    result = walk_forward(s, all_models(), step_days=BACKTEST_STEP_DAYS, cache=cache)
     fc = result.forecasts
     common = fc[fc.groupby(["origin", "horizon"])["model"].transform("nunique")
                 == fc["model"].nunique()]

@@ -21,6 +21,18 @@ Why smooth trend and not the full local linear trend: on the demo series both re
 likelihood (the extra level-noise variance is estimated ~0), the smooth trend has a better AIC
 and fits ~6x faster, which matters because backtesting refits at every origin.
 
+Interval calibration at long horizons (investigated 2026-09-25). On the 30-series benchmark the
+h=30 coverage is 86%, but the shortfall is concentrated in regime-change scenarios (cutting->bulk
+67%, cutting->plateau 72%; ~95% elsewhere): fitted on the whole series the slope volatility
+``sigma2.trend`` comes out ~0, so the current pace is treated as known. A floor on that
+volatility was tested on 18 held-out series (floors 0.002-0.016 kg/day): reaching 95% overall
+needed 0.008, which made intervals 2x wider and 100% covering on steady scenarios, still left
+cutting->bulk at 81%, and raised h=30 MAE 0.59 -> 0.68 - rejected. An unannounced regime change
+is not something any of these models can foresee. What does work is the user declaring it:
+fitting only on the current period (what the forecast page does), from 25 days after the switch,
+h=30 on cutting->bulk / cutting->plateau (10 held-out series): coverage 92%, MAE 0.60 -> 0.49,
+interval 6.2 -> 2.2 kg vs. the full history.
+
 Weekly pattern (added 2026-09-24): many people weigh more after weekends. An optional fixed
 7-day seasonal component (``seasonal=7``, deterministic) captures it - but only when the data
 supports it, otherwise it would fit noise. With ``weekly=None`` (default) both models are fitted

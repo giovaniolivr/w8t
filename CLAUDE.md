@@ -188,7 +188,7 @@ backtesting + significância + benchmarks multi-série, reconstrução de lacuna
 (Gemini) — **+ períodos obrigatórios** (todo registro pertence a um período; são as fronteiras de
 regime) **+ interface nova** (navegação com ícones, trilho lateral recolhível, logo, cartões,
 gráficos interativos). Ainda **não publicado** (demo no Streamlit Cloud pendente). Repo público
-em `github.com/giovaniolivr/w8t`. 230 testes.
+em `github.com/giovaniolivr/w8t`. 232 testes. Fine-tuning concluído em 2026-09-25.
 
 **Como rodar:** `.venv\Scripts\Activate.ps1` → `python -m w8t` (http://localhost:8501);
 `python -m w8t migrate` para migrações. Com uv: `uv run python -m w8t`. Entrada real:
@@ -692,6 +692,29 @@ Feito:
     "Final" em período encerrado) em `tests/test_periodos_page.py`; escopo pela URL em
     `tests/test_home_page.py`. 230 testes.
 
+- **Fine-tuning restante (item 3 de 3) — concluído (2026-09-25).**
+  - **(a) Cobertura em h=30 de Kalman/GPR individuais — investigado, modelos mantidos.** A
+    subcobertura (Kalman 86% no benchmark) está concentrada em viradas de regime (cutting→bulk
+    67%, cutting→platô 72%; ~95% no resto): ajustado na série toda, `sigma2.trend` ≈ 0 (ritmo
+    tratado como conhecido). **Piso na volatilidade do ritmo** testado em 18 séries reservadas
+    (0,002-0,016 kg/dia): 95% no agregado exigiu 0,008 → intervalos 2x mais largos e 100% nos
+    cenários estáveis, cutting→bulk ainda 81%, MAE h=30 0,59 → 0,68 — **rejeitado** (virada não
+    anunciada não é previsível). O que resolve é o **período declarado pelo usuário**: ajustando
+    só no período atual (como a página faz), 25+ dias após a virada, h=30 (10 séries
+    reservadas): Kalman cobertura 92%, MAE 0,60 → 0,49, IC 6,2 → 2,2 kg vs. histórico completo;
+    combinação 90%; GPR 86%; Holt 75%. Registrado no docstring de `forecasting/kalman.py`.
+  - **(b) Custo do backtesting na página — resolvido.** `walk_forward(..., cache=)`: previsão
+    por (modelo, nível, horizontes, hash dos dados de treino); a página guarda o cache em
+    `st.cache_resource` (teto de 50k entradas). Registro novo → só origens novas são ajustadas:
+    demo 25 s → ~0 s, resultado idêntico. Edição retroativa invalida (hash) só as origens a
+    partir dela. Recusas de ajuste também são cacheadas. O primeiro carregamento continua ~25 s.
+    Testes em `tests/test_backtest.py`.
+  - **(c) Kernel do GPR nas lacunas — reavaliado, mantido.** 8 variantes selecionadas em séries
+    reservadas; a vencedora (linear + RBF + semanal, 90 d) **não se confirmou** nas 48 séries
+    padrão: ganho agregado vem só do cenário semanal, perde nas viradas, vence 48% das séries
+    (p = 0,49); Matérn 90 d empata (p = 0,72). `docs/gaps_gpr_selection.md`. Kalman segue o
+    recomendado para lacunas.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -706,10 +729,8 @@ Próximos passos (para a próxima sessão — escolher com o usuário):
    (Postgres) com `DATABASE_URL` + `APP_ENV=demo` nos *secrets* (nunca no repo); rodar migrações
    no Neon; reset da demo; conferir tempo do backtesting (~20 s no 1º carregamento) no plano
    gratuito. Chave do Gemini NÃO vai para a demo (texto fixo).
-2. Fine-tuning restante: (a) calibração da cobertura em h=30 de Kalman/GPR individuais (a
-   combinação já é calibrada); (b) custo do backtesting na página (cache já existe; considerar
-   menos modelos no passo diário ou pré-cálculo); (c) GPR na reconstrução de lacunas ainda usa o
-   kernel linear+RBF — reavaliar com o Matérn escolhido.
+2. ~~Fine-tuning restante~~ — concluído em 2026-09-25 (ver acima). Possível ainda: pré-aquecer
+   o cache do backtesting na demo publicada (1º carregamento ~25 s).
 3. UI: polir Registro/Lacunas/Resumo no mesmo padrão de cartões; responsividade em janela
    estreita (cartões de métrica cortam valores < ~1000 px); tooltips no trilho já feitos.
 4. Ideia registrada: sugestão de período também para períodos com data planejada (hoje só nos

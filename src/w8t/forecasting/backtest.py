@@ -11,12 +11,20 @@ interval coverage (should be close to the nominal level - far below means over-c
 above means uselessly wide), mean interval width, and skill vs. a reference model
 (1 - MAE / MAE_ref; > 0 means better than the reference). By default metrics are computed only
 on the cases every model forecast, so models are compared on identical ground.
+
+Optional ``cache`` (any mutable mapping): a forecast made at an origin depends only on the model
+and the training data up to that origin, so it is stored under (model name, level, horizons,
+hash of the training data). When the user adds today's entry, every past origin is a cache hit
+and only the new origins are fitted - the backtest no longer restarts from scratch. A retroactive
+entry or edit changes the hash of every later training set, so those are refitted. Model names
+must identify the configuration (they do in the registry).
 """
 
 from __future__ import annotations
 
 import copy
-from collections.abc import Sequence
+import hashlib
+from collections.abc import MutableMapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -65,6 +73,7 @@ def walk_forward(
     step_days: int = DEFAULT_STEP_DAYS,
     min_history_days: int = DEFAULT_MIN_HISTORY_DAYS,
     level: float = 0.95,
+    cache: MutableMapping | None = None,
 ) -> BacktestResult:
     rows: list[dict] = []
     skipped: list[dict] = []
@@ -76,20 +85,18 @@ def walk_forward(
         if all(v is None for v in truths.values()):
             continue  # nothing to score from this origin
 
+        train_key = _data_key(train) if cache is not None else None
         fitted: dict[str, ForecastModel] = {}  # this origin's fits, reusable by ensembles
         for prototype in models:
-            model = copy.deepcopy(prototype)
-            try:
-                members = getattr(prototype, "member_names", None)
-                if members and all(name in fitted for name in members):
-                    model.fit_from_fitted([fitted[name] for name in members])
-                else:
-                    model.fit(train)
-                fc = model.predict(list(horizons), level=level)
-            except InsufficientDataError as exc:
-                skipped.append({"model": prototype.name, "origin": origin, "reason": str(exc)})
+            key = (prototype.name, level, tuple(horizons), train_key)
+            fc = cache.get(key) if cache is not None else None
+            if fc is None:
+                fc = _fit_predict(prototype, train, fitted, horizons, level)
+                if cache is not None:
+                    cache[key] = fc
+            if isinstance(fc, str):  # the model refused this training set
+                skipped.append({"model": prototype.name, "origin": origin, "reason": fc})
                 continue
-            fitted[prototype.name] = model
             for i, h in enumerate(fc.horizons):
                 y = truths[int(h)]
                 if y is None:
@@ -121,6 +128,28 @@ def walk_forward(
         skipped=pd.DataFrame(skipped, columns=["model", "origin", "reason"]),
         level=level,
     )
+
+
+def _fit_predict(prototype, train, fitted, horizons, level):
+    """Forecast from a fresh copy of ``prototype``, or the reason it refused to fit."""
+    model = copy.deepcopy(prototype)
+    try:
+        members = getattr(prototype, "member_names", None)
+        if members and all(name in fitted for name in members):
+            model.fit_from_fitted([fitted[name] for name in members])
+        else:
+            model.fit(train)
+        fc = model.predict(list(horizons), level=level)
+    except InsufficientDataError as exc:
+        return str(exc)
+    fitted[prototype.name] = model
+    return fc
+
+
+def _data_key(series: pd.Series) -> str:
+    h = hashlib.sha1(series.index.asi8.tobytes())
+    h.update(np.ascontiguousarray(series.to_numpy(dtype=float)).tobytes())
+    return h.hexdigest()
 
 
 def summarize(
