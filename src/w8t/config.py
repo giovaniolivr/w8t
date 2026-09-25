@@ -37,4 +37,24 @@ class Settings(BaseSettings):
         return self.app_env == "demo"
 
 
-settings = Settings()
+def _streamlit_secrets() -> dict[str, str]:
+    """Settings given as Streamlit secrets (hosted demo: Community Cloud's "Secrets" box).
+
+    Read directly instead of relying on Streamlit copying root-level secrets into environment
+    variables: that happens only once the secrets are parsed, and on the first hosted deploy the
+    config had already been resolved without them (the app ran in local mode on an empty SQLite
+    file). Outside Streamlit, or with no secrets file, there is nothing to read.
+    """
+    try:
+        import streamlit as st
+
+        raw = st.secrets.to_dict()
+    except Exception:  # noqa: BLE001 - no runtime / no secrets file / parse error
+        return {}
+    fields = set(Settings.model_fields)
+    return {k.lower(): str(v) for k, v in raw.items()
+            if k.lower() in fields and isinstance(v, str | int | float)}
+
+
+# Precedence: Streamlit secrets > environment variables > .env file > defaults.
+settings = Settings(**_streamlit_secrets())

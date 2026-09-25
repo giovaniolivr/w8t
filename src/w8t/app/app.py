@@ -5,7 +5,6 @@ declares them. With ``st.navigation`` the automatic ``pages/`` discovery is off,
 must be registered here.
 """
 
-import contextlib
 import sys
 from datetime import date
 from pathlib import Path
@@ -21,12 +20,8 @@ try:
 except ModuleNotFoundError:
     sys.path.insert(0, str(HERE.parents[1]))
 
-# Root-level Streamlit secrets become environment variables once they're loaded; touch them
-# before w8t.config is imported so APP_ENV / DATABASE_URL are there. No secrets file locally.
-with contextlib.suppress(Exception):  # FileNotFoundError / StreamlitSecretNotFoundError
-    st.secrets.to_dict()
-
-from w8t.config import settings  # after the path/secrets setup above
+# after the path setup above; the config reads Streamlit secrets itself
+from w8t.config import settings
 
 
 @st.cache_data(ttl=3600, show_spinner="Preparando os dados de demonstração...")
