@@ -119,3 +119,37 @@ def test_duplicate_date_offers_overwrite(app):
 
     assert not at.exception
     assert "79.0" in at.dataframe[0].value.to_string()
+
+
+def _entry_count():
+    with db_module.get_session() as session:
+        return len(repository.list_entries(session))
+
+
+def test_new_entry_form_starts_from_the_last_weight(app):
+    _open_period(TODAY - timedelta(days=30))
+    with db_module.get_session() as session:
+        repository.create_entry(session, entry_date=TODAY - timedelta(days=1), weight_kg=82.3)
+    at = app.run()
+
+    assert at.number_input[0].value == pytest.approx(82.3)
+
+
+def test_delete_asks_for_confirmation_first(app):
+    _open_period(TODAY - timedelta(days=30))
+    with db_module.get_session() as session:
+        repository.create_entry(session, entry_date=TODAY - timedelta(days=1), weight_kg=82.3)
+    at = app.run()
+
+    next(b for b in at.button if b.label == "Excluir").click().run()
+    assert _entry_count() == 1  # nothing deleted yet
+    assert "não pode ser desfeito" in at.warning[0].value
+
+    next(b for b in at.button if b.label == "Não").click().run()
+    assert _entry_count() == 1
+    assert not at.warning
+
+    next(b for b in at.button if b.label == "Excluir").click().run()
+    next(b for b in at.button if b.label == "Sim, excluir").click().run()
+    assert not at.exception
+    assert _entry_count() == 0

@@ -38,14 +38,39 @@ def _save_entry(entry_date: date, weight_kg: float, entry_time) -> None:
             st.session_state["duplicate"] = (entry_date, weight_kg, entry_time)
 
 
+with get_session() as session:
+    recent = repository.list_entries(session, ascending=False)[:2]
+    current_period = periods.get_period_for_date(session, date.today())
+    last_30 = sum(
+        1 for e in repository.list_entries(session)
+        if e.entry_date > date.today() - timedelta(days=30)
+    )
+
+if recent:
+    last = recent[0]
+    diff = (
+        f"{last.weight_kg - recent[1].weight_kg:+.1f} kg vs. {_fmt(recent[1].entry_date)}"
+        if len(recent) > 1 else "primeiro registro"
+    )
+    ui.stats([
+        ("Último registro", f"{last.weight_kg:.1f} kg", f"{_fmt(last.entry_date)} · {diff}"),
+        ("Período atual", current_period.label if current_period else "nenhum",
+         GOALS[current_period.goal_direction] if current_period else "defina ao registrar"),
+        ("Últimos 30 dias", f"{last_30} de 30", "dias com registro"),
+    ])
+
 st.subheader("Novo registro")
 with st.form("new_entry_form", clear_on_submit=True):
     col1, col2, col3 = st.columns(3)
-    entry_date = col1.date_input("Data", value=date.today(), max_value=date.today())
-    weight_kg = col2.number_input(
-        "Peso (kg)", min_value=20.0, max_value=400.0, step=0.1, format="%.1f"
+    entry_date = col1.date_input(
+        "Data", value=date.today(), max_value=date.today(), format="DD/MM/YYYY"
     )
-    has_time = col3.checkbox("Registrar horário")
+    weight_kg = col2.number_input(
+        "Peso (kg)", min_value=20.0, max_value=400.0, step=0.1, format="%.1f",
+        # start from the last weight: a daily change is a few hundred grams, not 20 kg
+        value=float(recent[0].weight_kg) if recent else 70.0,
+    )
+    has_time = col3.checkbox("Informar horário")
     entry_time = st.time_input("Horário") if has_time else None
     submitted = st.form_submit_button("Salvar", type="primary")
 
@@ -57,6 +82,8 @@ if submitted:
         st.session_state["pending_entry"] = (entry_date, weight_kg, entry_time)
     else:
         _save_entry(entry_date, weight_kg, entry_time)
+        if "duplicate" not in st.session_state:
+            st.rerun()  # the figures at the top were read before this save
 
 if "flash" in st.session_state:
     st.success(st.session_state.pop("flash"))
@@ -96,6 +123,7 @@ if "pending_entry" in st.session_state:
             value=next_start - timedelta(days=1) if next_start else p_date + timedelta(days=60),
             min_value=p_date,
             key="pending_end",
+            format="DD/MM/YYYY",
         )
     elif next_start is not None:
         st.warning(
@@ -164,19 +192,26 @@ def _period_of(d: date) -> str:
 
 df = pd.DataFrame(
     [
-        {"id": e.id, "Data": e.entry_date, "Peso (kg)": e.weight_kg, "Horário": e.entry_time,
+        {"Data": e.entry_date, "Peso (kg)": e.weight_kg,
+         "Horário": e.entry_time.strftime("%H:%M") if e.entry_time else "",
          "Período": _period_of(e.entry_date)}
         for e in entries
     ]
-).set_index("id").sort_values("Data")
-df["Diferença vs. anterior (kg)"] = df["Peso (kg)"].diff().round(2)
+).sort_values("Data")
+df.insert(2, "Diferença (kg)", df["Peso (kg)"].diff().round(2))
+if not df["Horário"].any():
+    df = df.drop(columns="Horário")
 st.dataframe(
     df.sort_values("Data", ascending=False),
     width="stretch",
+    hide_index=True,
+    height=min(38 + 35 * len(df), 420),
     column_config={
         "Data": st.column_config.DateColumn(format="DD/MM/YYYY"),
         "Peso (kg)": st.column_config.NumberColumn(format="%.1f"),
-        "Diferença vs. anterior (kg)": st.column_config.NumberColumn(format="%+.2f"),
+        "Diferença (kg)": st.column_config.NumberColumn(
+            format="%+.2f", help="Em relação ao registro anterior (que pode ser de dias antes)."
+        ),
     },
 )
 loose = [e for e in entries if _period_of(e.entry_date) == "— sem período"]
@@ -186,23 +221,35 @@ if loose:
     )
 
 st.subheader("Editar ou excluir")
-options = {f"{_fmt(e.entry_date)} — {e.weight_kg} kg": e.id for e in entries}
-selected_label = st.selectbox("Selecione um registro", list(options.keys()))
-selected_id = options[selected_label]
-current_weight = next(e.weight_kg for e in entries if e.id == selected_id)
+with st.container(border=True, key="w8t-card-edit-entry"):
+    options = {f"{_fmt(e.entry_date)} — {e.weight_kg:.1f} kg": e.id for e in entries}
+    ec1, ec2 = st.columns([3, 2])
+    selected_label = ec1.selectbox("Registro", list(options.keys()))
+    selected_id = options[selected_label]
+    current_weight = next(e.weight_kg for e in entries if e.id == selected_id)
+    new_weight = ec2.number_input(
+        "Peso (kg)", min_value=20.0, max_value=400.0, step=0.1, format="%.1f",
+        value=current_weight, key=f"edit_weight_{selected_id}",
+    )
+    actions = st.container(horizontal=True)
+    if actions.button("Salvar alterações", icon=":material/save:"):
+        with get_session() as session:
+            repository.update_entry(session, selected_id, weight_kg=new_weight)
+        st.session_state["flash"] = "Registro atualizado."
+        st.rerun()
+    if actions.button("Excluir", icon=":material/delete:"):
+        st.session_state["confirm_delete"] = selected_id
 
-new_weight = st.number_input(
-    "Peso (kg)", min_value=20.0, max_value=400.0, step=0.1, format="%.1f",
-    value=current_weight, key=f"edit_weight_{selected_id}",
-)
-ec1, ec2 = st.columns(2)
-if ec1.button("Salvar alterações"):
-    with get_session() as session:
-        repository.update_entry(session, selected_id, weight_kg=new_weight)
-    st.session_state["flash"] = "Registro atualizado."
-    st.rerun()
-if ec2.button("Excluir registro"):
-    with get_session() as session:
-        repository.delete_entry(session, selected_id)
-    st.session_state["flash"] = "Registro excluído."
-    st.rerun()
+    # Deleting a measurement can't be undone - ask first.
+    if st.session_state.get("confirm_delete") == selected_id:
+        st.warning(f"Excluir o registro de {selected_label}? Isso não pode ser desfeito.")
+        confirm = st.container(horizontal=True)
+        if confirm.button("Sim, excluir", type="primary"):
+            with get_session() as session:
+                repository.delete_entry(session, selected_id)
+            del st.session_state["confirm_delete"]
+            st.session_state["flash"] = "Registro excluído."
+            st.rerun()
+        if confirm.button("Não", key="cancel_delete"):
+            del st.session_state["confirm_delete"]
+            st.rerun()

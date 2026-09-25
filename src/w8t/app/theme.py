@@ -34,7 +34,10 @@ SURFACE = "#1F2322"
 # Passed to st.plotly_chart(config=...): scroll-to-zoom, no Plotly logo, clean export.
 PLOTLY_CONFIG = {
     "displaylogo": False,
-    "scrollZoom": True,
+    # No wheel zoom: with it, the wheel over a chart zooms instead of scrolling the page, and the
+    # charts fill most of the window. Drag-to-zoom, the 7d/1m/... buttons and double-click reset
+    # remain.
+    "scrollZoom": False,
     "modeBarButtonsToRemove": ["lasso2d", "select2d", "autoScale2d"],
     "toImageButtonOptions": {"format": "png", "filename": "w8t", "scale": 2},
 }
@@ -66,6 +69,12 @@ def style_figure(fig, *, height: int = 440, time_axis: bool = True, range_slider
         "spikedash": "dot",
     }
     if time_axis:
+        # Brazilian dates; plotly's default English month names ("Aug 23") clashed with the UI.
+        xaxis["hoverformat"] = "%d/%m/%Y"
+        xaxis["tickformatstops"] = [
+            {"dtickrange": [None, 86_400_000 * 40], "value": "%d/%m"},  # up to ~monthly ticks
+            {"dtickrange": [86_400_000 * 40, None], "value": "%m/%Y"},
+        ]
         xaxis["rangeselector"] = {
             "buttons": [
                 {"count": 7, "label": "7d", "step": "day", "stepmode": "backward"},

@@ -72,9 +72,11 @@ with st.form("new_period_form", clear_on_submit=True):
     direction_label = col2.selectbox("Objetivo", list(DIRECTION_LABELS.values()))
 
     col3, col4, col5 = st.columns(3)
-    start_date = col3.date_input("Início", value=date.today(), key="new_period_start")
-    ongoing = col4.checkbox("Período em andamento (sem data de fim)", value=True)
-    end_date = None if ongoing else col5.date_input("Fim", value=date.today())
+    start_date = col3.date_input(
+        "Início", value=date.today(), key="new_period_start", format="DD/MM/YYYY"
+    )
+    ongoing = col4.checkbox("Em andamento (sem data de fim)", value=True)
+    end_date = None if ongoing else col5.date_input("Fim", value=date.today(), format="DD/MM/YYYY")
 
     has_target = st.checkbox("Definir meta específica deste período")
     target_weight_kg = (
@@ -210,7 +212,7 @@ else:
 
     ec3, ec4, ec5 = st.columns(3)
     new_start = ec3.date_input(
-        "Início", value=selected.start_date, key=f"edit_start_{selected_id}"
+        "Início", value=selected.start_date, key=f"edit_start_{selected_id}", format="DD/MM/YYYY"
     )
     new_ongoing = ec4.checkbox(
         "Em andamento", value=selected.end_date is None, key=f"edit_ongoing_{selected_id}"
@@ -219,7 +221,8 @@ else:
         None
         if new_ongoing
         else ec5.date_input(
-            "Fim", value=selected.end_date or date.today(), key=f"edit_end_{selected_id}"
+            "Fim", value=selected.end_date or date.today(), key=f"edit_end_{selected_id}",
+            format="DD/MM/YYYY",
         )
     )
 

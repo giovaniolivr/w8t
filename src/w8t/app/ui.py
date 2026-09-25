@@ -114,6 +114,10 @@ button, input, textarea, [data-testid="stMetricValue"], [data-testid="stMetricDe
 }
 [data-testid="stMetricValue"] { font-weight: 700; letter-spacing: -0.01em; }
 [data-testid="stPlotlyChart"] { padding: 10px 8px 4px 8px; }
+/* That padding makes the chart ~11px taller than its element container, which is overflow:auto -
+   the mouse wheel then scrolled that tiny inner box instead of the page (the chart "slid" and the
+   page seemed stuck with the cursor over a chart). */
+[data-testid="stElementContainer"]:has([data-testid="stPlotlyChart"]) { overflow: visible; }
 [data-testid="stForm"] { padding: 18px 18px 8px 18px; }
 [data-testid="stDataFrame"] { padding: 4px; }
 
@@ -238,6 +242,46 @@ button, input, textarea, [data-testid="stMetricValue"], [data-testid="stMetricDe
 [data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-full { display: none; }
 [data-testid="stSidebar"][aria-expanded="false"] .w8t-logo-mini { display: block; height: 36px; }
 
+/* Responsive. Streamlit only stacks columns below 640px; between that and a laptop screen a row
+   of 4 metrics got ~110px each and values were cut to "8...". Metric columns now wrap onto a new
+   row instead of shrinking past a readable width, and the side padding shrinks with the window. */
+[data-testid="stHorizontalBlock"] { flex-wrap: wrap; }
+[data-testid="stColumn"]:has([data-testid="stMetric"]) { min-width: 160px; }
+[class*="st-key-w8t-card"] [data-testid="stColumn"]:has([data-testid="stMetric"]) {
+  min-width: 110px;
+}
+[data-testid="stMetricValue"] { font-size: clamp(1.45rem, 1.1rem + 0.9vw, 2.1rem); }
+@media (max-width: 1280px) {
+  [data-testid="stMainBlockContainer"] { padding-left: 2rem; padding-right: 2rem; }
+}
+/* medium windows: rows of 4 metrics become a tidy 2x2 grid instead of 3 + 1 stretched */
+@media (max-width: 1150px) {
+  [data-testid="stColumn"]:has([data-testid="stMetric"]) { min-width: calc(50% - 1rem); }
+  [class*="st-key-w8t-card"] [data-testid="stColumn"]:has([data-testid="stMetric"]) {
+    min-width: 110px;
+  }
+  /* a grid of cards (Períodos) goes to one card per row, so each card keeps room inside */
+  [data-testid="stColumn"]:has([class*="st-key-w8t-card"]) { min-width: 100%; }
+}
+@media (max-width: 900px) {
+  [data-testid="stMainBlockContainer"] { padding-left: 1rem; padding-right: 1rem; }
+  .w8t-hero h1 { font-size: 1.7rem; }
+}
+
+/* Key-figure strip (Lacunas, Resumo): small label over a big number, in a row of tiles. */
+.w8t-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px; margin: 4px 0 16px 0; }
+.w8t-stat {
+  background: linear-gradient(150deg, var(--w8t-surface-2) 0%, var(--w8t-surface) 100%);
+  border: 1px solid var(--w8t-border); border-radius: 14px; padding: 12px 14px;
+  box-shadow: var(--w8t-shadow); animation: w8t-rise .5s ease-out both;
+}
+.w8t-stat .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--w8t-muted); }
+.w8t-stat .v { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.01em; margin-top: 2px; }
+.w8t-stat .s { font-size: .8rem; color: var(--w8t-muted); margin-top: 2px; }
+.w8t-stat.accent .v { color: #86EFAC; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: #2a2f2d; border-radius: 10px; }
@@ -296,3 +340,16 @@ def callout(title: str, body: str) -> None:
 
 def pill(text: str) -> str:
     return f'<span class="w8t-pill">{text}</span>'
+
+
+def stats(items: list[tuple[str, str, str | None]], *, accent: int | None = None) -> None:
+    """Row of key-figure tiles: (label, value, optional subtitle). Wraps on narrow windows.
+    ``accent`` highlights one tile (green value) - use it for derived values, never for
+    measurements (palette convention in theme.py)."""
+    tiles = []
+    for i, (label, value, sub) in enumerate(items):
+        cls = "w8t-stat accent" if i == accent else "w8t-stat"
+        sub_html = f'<div class="s">{sub}</div>' if sub else ""
+        tiles.append(f'<div class="{cls}"><div class="k">{label}</div>'
+                     f'<div class="v">{value}</div>{sub_html}</div>')
+    st.markdown(f'<div class="w8t-stats">{"".join(tiles)}</div>', unsafe_allow_html=True)

@@ -113,7 +113,8 @@ def _switch_period_dialog(current, suggested):
     goal = st.radio("Novo objetivo", goals, index=goals.index(suggested),
                     format_func=lambda g: GOAL_LABELS[g].capitalize(), horizontal=True)
     start = st.date_input("Início do novo período", value=date.today(),
-                          min_value=current.start_date + timedelta(days=1), max_value=date.today())
+                          min_value=current.start_date + timedelta(days=1), max_value=date.today(),
+                          format="DD/MM/YYYY")
     label = st.text_input("Nome", value=f"{GOAL_LABELS[goal].capitalize()} desde {_d(start)}")
     if st.button("Confirmar", type="primary"):
         with get_session() as session:

@@ -1,3 +1,4 @@
+import json
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -62,6 +63,9 @@ def test_reconstruction_is_opt_in_shown_as_estimate_and_never_saved(app):
     at = app.run()
     assert not at.exception
     assert len(at.dataframe) == 0  # nothing estimated until the user asks
+    # ...but the gap is already shown in context, with measurements only
+    traces = {t["name"] for t in json.loads(at.get("plotly_chart")[0].proto.spec)["data"]}
+    assert traces == {"Medição real"}
 
     at.button[0].click().run()
     assert not at.exception

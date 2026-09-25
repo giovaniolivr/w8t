@@ -188,7 +188,7 @@ backtesting + significância + benchmarks multi-série, reconstrução de lacuna
 (Gemini) — **+ períodos obrigatórios** (todo registro pertence a um período; são as fronteiras de
 regime) **+ interface nova** (navegação com ícones, trilho lateral recolhível, logo, cartões,
 gráficos interativos). Ainda **não publicado** (demo no Streamlit Cloud pendente). Repo público
-em `github.com/giovaniolivr/w8t`. 232 testes. Fine-tuning concluído em 2026-09-25.
+em `github.com/giovaniolivr/w8t`. 234 testes. Fine-tuning e polimento de UI concluídos em 2026-09-25.
 
 **Como rodar:** `.venv\Scripts\Activate.ps1` → `python -m w8t` (http://localhost:8501);
 `python -m w8t migrate` para migrações. Com uv: `uv run python -m w8t`. Entrada real:
@@ -715,6 +715,32 @@ Feito:
     (p = 0,49); Matérn 90 d empata (p = 0,72). `docs/gaps_gpr_selection.md`. Kalman segue o
     recomendado para lacunas.
 
+- **Polimento da interface (2026-09-25).**
+  - Responsividade (`ui.py`): entre 640 px e ~1150 px as colunas de métricas quebram de linha
+    (grade 2×2) em vez de cortar o valor em "8..."; grade de cartões de Períodos vira 1 por linha;
+    padding lateral menor em janelas médias/estreitas; fonte do valor da métrica com `clamp`.
+    Novo `ui.stats(...)`: faixa de números-chave em HTML (grid `auto-fit`), `accent` só para
+    valor derivado.
+  - **Armadilha de rolagem corrigida:** o padding do cartão do gráfico deixava o conteúdo ~11 px
+    mais alto que o `stElementContainer` (que é `overflow: auto`) → a roda do mouse rolava essa
+    caixa interna e a página parecia travada sobre qualquer gráfico. Agora `overflow: visible`.
+    Zoom pela roda do mouse (`scrollZoom`) desligado pelo mesmo motivo; arrastar para zoom e os
+    botões 7d/1m/... continuam.
+  - Gráficos com datas em formato BR (`tickformatstops` %d/%m ou %m/%Y, hover %d/%m/%Y) em vez
+    de "Aug 23"; todos os `date_input` com `format="DD/MM/YYYY"`.
+  - Registro: faixa com último registro (e diferença), período atual e dias com registro nos
+    últimos 30; peso do formulário começa no último peso (antes 20,0); tabela sem `id`/"None",
+    coluna Horário só se houver; edição em cartão; **excluir pede confirmação** (antes apagava
+    direto); rerun após salvar para a faixa do topo atualizar.
+  - Lacunas: faixa (nº de lacunas, maior lacuna, % de dias com registro); gráfico da lacuna em
+    contexto aparece antes de estimar (só medições); estimativas com barras de erro (lacuna de 1
+    dia não tinha faixa visível); legenda embaixo; texto corrigido (padrão semanal *é* tratado
+    pelo Kalman).
+  - Resumo: faixa com peso atual, tendência (com IC) e previsão 30 d (com IC) tirada do mesmo
+    JSON que o LLM recebe; texto num cartão com selo ("Números verificados" / "a conferir").
+  - Testes novos: peso inicial do formulário, exclusão com confirmação, gráfico da lacuna antes
+    de estimar só com medições. 234 testes.
+
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
 `w8t.config`/`w8t.data.db` antes de um teste tentar trocar `DATABASE_URL` via `monkeypatch.setenv`,
@@ -731,8 +757,9 @@ Próximos passos (para a próxima sessão — escolher com o usuário):
    gratuito. Chave do Gemini NÃO vai para a demo (texto fixo).
 2. ~~Fine-tuning restante~~ — concluído em 2026-09-25 (ver acima). Possível ainda: pré-aquecer
    o cache do backtesting na demo publicada (1º carregamento ~25 s).
-3. UI: polir Registro/Lacunas/Resumo no mesmo padrão de cartões; responsividade em janela
-   estreita (cartões de métrica cortam valores < ~1000 px); tooltips no trilho já feitos.
+3. ~~UI: polir Registro/Lacunas/Resumo; responsividade~~ — feito em 2026-09-25. Restam
+   detalhes: Previsão ainda no layout antigo (tabelas longas); legenda no topo dos gráficos do
+   dashboard pode cortar em janela estreita (medição de texto antes da fonte Inter carregar).
 4. Ideia registrada: sugestão de período também para períodos com data planejada (hoje só nos
    indefinidos, conforme pedido do usuário).
 
