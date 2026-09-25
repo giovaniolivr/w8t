@@ -187,8 +187,8 @@ Holt amortecido, Kalman com padrão semanal automático, GPR, combinação Kalma
 backtesting + significância + benchmarks multi-série, reconstrução de lacunas, insights via LLM
 (Gemini) — **+ períodos obrigatórios** (todo registro pertence a um período; são as fronteiras de
 regime) **+ interface nova** (navegação com ícones, trilho lateral recolhível, logo, cartões,
-gráficos interativos). Ainda **não publicado** (demo no Streamlit Cloud pendente). Repo público
-em `github.com/giovaniolivr/w8t`. 234 testes. Fine-tuning e polimento de UI concluídos em 2026-09-25.
+gráficos interativos). **Demo publicada** em https://w8t-demo.streamlit.app/. Repo público
+em `github.com/giovaniolivr/w8t`. 241 testes. Fine-tuning, polimento de UI e publicação da demo concluídos em 2026-09-25.
 
 **Como rodar:** `.venv\Scripts\Activate.ps1` → `python -m w8t` (http://localhost:8501);
 `python -m w8t migrate` para migrações. Com uv: `uv run python -m w8t`. Entrada real:
@@ -767,9 +767,21 @@ Feito:
     Nenhum passo manual de migração/reset no Neon.
   - Simulado localmente: pasta isolada só com `.streamlit/secrets.toml` (sem `.env`) e SQLite
     vazio → app sobe em modo demo e se popula sozinho. Postgres de verdade só testável com o Neon.
-  - Passos do usuário: Neon (projeto → connection string) → share.streamlit.io (repo
+  - Configuração: Neon (projeto → connection string) → share.streamlit.io (repo
     `giovaniolivr/w8t`, branch `main`, arquivo `src/w8t/app/app.py`, Python 3.12, *secrets*
-    `APP_ENV = "demo"` e `DATABASE_URL = "<string do Neon>"`). 238 testes.
+    `APP_ENV = "demo"` e `DATABASE_URL = "<string do Neon>"`).
+  - **Publicado (2026-09-25): https://w8t-demo.streamlit.app/.** O 1º deploy falhou com
+    `OperationalError` ("no such table") porque a caixa de *Secrets* estava **vazia**: sem
+    `APP_ENV`, o app caiu no modo local com SQLite vazio. Ficou do processo: `config.py` lê
+    `st.secrets` **diretamente** (seção ou raiz; precedência secrets > env > .env > padrão) e
+    registra em `SECRETS_STATUS` só os *nomes* das chaves; hospedado (`/mount/src`) e fora do modo
+    demo, `app.py` mostra esse diagnóstico na tela e para. Compatibilidade com Postgres
+    verificada no Neon real (tabelas, enum, 146 registros + 2 períodos). Previsão carrega em
+    < 30 s no plano grátis (escopo = período atual).
+  - `tests/conftest.py`: testes sempre em modo local (antes herdavam `APP_ENV` do `.env` do
+    desenvolvedor e falhavam com `APP_ENV=demo`). 241 testes.
+  - Atenção: o `.env` local do usuário ficou apontando para o Neon (`APP_ENV=demo`) durante o
+    setup — rodar o app local assim abre a demo pública; dados reais seguem em `w8t_local.db`.
 
 Armadilha de teste já resolvida (documentada para não reintroduzir): `w8t.config.settings` é um
 singleton resolvido no primeiro import do módulo. Se outro arquivo de teste importar
@@ -781,8 +793,8 @@ em variável de ambiente. Qualquer novo teste que precise de um banco isolado de
 padrão.
 
 Próximos passos (para a próxima sessão — escolher com o usuário):
-1. **Publicar a demo** — código preparado em 2026-09-25 (ver "Deploy da demo" abaixo); falta
-   o usuário criar o banco no Neon e o app no Streamlit Community Cloud.
+1. ~~Publicar a demo~~ — **no ar em 2026-09-25: https://w8t-demo.streamlit.app/** (ver "Deploy
+   da demo"). Todas as páginas conferidas no navegador.
 2. ~~Fine-tuning restante~~ — concluído em 2026-09-25 (ver acima). Possível ainda: pré-aquecer
    o cache do backtesting na demo publicada (1º carregamento ~25 s).
 3. ~~UI: polir todas as páginas; responsividade; legenda dos gráficos~~ — feito em

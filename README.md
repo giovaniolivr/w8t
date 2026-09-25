@@ -5,6 +5,10 @@ previsões estatísticas/ML com intervalos de incerteza. Projeto de estudo (ML/e
 comercial — construído incrementalmente, feature por feature. Veja `CLAUDE.md` para o estado
 atual do projeto e as decisões de arquitetura.
 
+**Demo pública:** https://w8t-demo.streamlit.app/ — dados sintéticos, editáveis por qualquer
+visitante e restauráveis pelo botão "Resetar dados de demonstração" (os dados também se renovam
+sozinhos quando ficam com mais de 3 dias).
+
 ## Stack
 
 - Python 3.12, gerenciado com [uv](https://docs.astral.sh/uv/)
@@ -27,7 +31,7 @@ Configurado via `.env` (copie `.env.example`). Dados reais nunca são expostos n
 Com [uv](https://docs.astral.sh/uv/) instalado:
 
 ```bash
-uv sync --extra postgres --extra insights   # ou só `uv sync` se não precisar dessas extras
+uv sync --extra insights   # ou só `uv sync` se não for usar o resumo via Gemini
 uv run python -m w8t migrate                # cria/atualiza o schema do banco configurado em .env
 uv run python -m w8t                        # sobe o app em http://localhost:8501
 ```
