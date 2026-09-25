@@ -181,10 +181,28 @@ GitHub para os quadrados verdes contarem.
 
 ## Estado atual
 
-Fase: **itens 1, 2, 8-10 (baselines) e 15 da spec concluídos** (registro diário, dashboard,
-tendência/platô/anomalia, backtesting) + forecasting engine completo (baselines, Holt amortecido, Kalman, GPR, combinação Kalman+Holt) **+ `Period` no data layer** (entidade nova, fora da numeração da spec original, ver seção "Períodos/ciclos"
-acima). Repo
-público em `github.com/giovaniolivr/w8t`.
+Fase (fim de 2026-09-24): **camada analítica da spec concluída e ajustada** — registro diário,
+dashboard, tendência/platô/anomalia (baselines + Kalman), forecasting engine completo (baselines,
+Holt amortecido, Kalman com padrão semanal automático, GPR, combinação Kalman+Holt recomendada),
+backtesting + significância + benchmarks multi-série, reconstrução de lacunas, insights via LLM
+(Gemini) — **+ períodos obrigatórios** (todo registro pertence a um período; são as fronteiras de
+regime) **+ interface nova** (navegação com ícones, trilho lateral recolhível, logo, cartões,
+gráficos interativos). Ainda **não publicado** (demo no Streamlit Cloud pendente). Repo público
+em `github.com/giovaniolivr/w8t`. 230 testes.
+
+**Como rodar:** `.venv\Scripts\Activate.ps1` → `python -m w8t` (http://localhost:8501);
+`python -m w8t migrate` para migrações. Com uv: `uv run python -m w8t`. Entrada real:
+`src/w8t/app/app.py`. Avaliações: `python -m w8t.forecasting.benchmark`,
+`python -m w8t.patterns.evaluation`, `python -m w8t.patterns.gaps_evaluation` (resultados em
+`docs/`). Texto fixo da demo: `python -m w8t.insights.narrator --demo` (usa a chave do `.env`).
+
+**Resumo da sessão de 2026-09-24** (detalhes nos itens abaixo, em ordem cronológica): dashboard →
+detectores baseline → forecasting (baselines, Holt, Kalman, GPR) → backtesting → significância
+(DM) e benchmark multi-série → combinação Kalman+Holt → detectores via Kalman com avaliação
+rotulada → lacunas → insights LLM (Gemini) → padrão semanal → GPR re-selecionado sem viés →
+períodos obrigatórios + UI nova → navegação/trilho/escopo por período na previsão → cartões de
+período com "Ver análises". Dados locais reais do usuário: ~7 registros (entrados antes de
+existir período — devem ser vinculados pela página Períodos).
 
 Feito:
 - Repo git inicializado, identidade de commit configurada (`Giovaniolivr@gmail.com`), remoto no
@@ -683,18 +701,27 @@ a troca chega tarde demais e o teste acaba usando o banco local real. A correç�
 em variável de ambiente. Qualquer novo teste que precise de um banco isolado deve seguir o mesmo
 padrão.
 
-Próximo passo (fine-tuning, continuar "até o produto estar bem amarrado", decidido com o
-usuário em 2026-09-24): candidatos — (a) tendência logo após viradas de regime (fraqueza comum a
-Kalman/GPR com janelas longas; ex.: detecção de mudança de regime ou janela adaptativa);
-(b) calibração da cobertura em h=30 dos modelos individuais; (c) custo do backtesting na página
-(~20 s + Kalman semanal). Depois: polimento de UI (animações/CSS) e deploy da demo.
+Próximos passos (para a próxima sessão — escolher com o usuário):
+1. **Publicar a demo** no Streamlit Community Cloud: entrada `src/w8t/app/app.py`; banco Neon
+   (Postgres) com `DATABASE_URL` + `APP_ENV=demo` nos *secrets* (nunca no repo); rodar migrações
+   no Neon; reset da demo; conferir tempo do backtesting (~20 s no 1º carregamento) no plano
+   gratuito. Chave do Gemini NÃO vai para a demo (texto fixo).
+2. Fine-tuning restante: (a) calibração da cobertura em h=30 de Kalman/GPR individuais (a
+   combinação já é calibrada); (b) custo do backtesting na página (cache já existe; considerar
+   menos modelos no passo diário ou pré-cálculo); (c) GPR na reconstrução de lacunas ainda usa o
+   kernel linear+RBF — reavaliar com o Matérn escolhido.
+3. UI: polir Registro/Lacunas/Resumo no mesmo padrão de cartões; responsividade em janela
+   estreita (cartões de métrica cortam valores < ~1000 px); tooltips no trilho já feitos.
+4. Ideia registrada: sugestão de período também para períodos com data planejada (hoje só nos
+   indefinidos, conforme pedido do usuário).
 
 Sem autenticação/login por decisão (2026-09-24): não é foco do projeto; pode ser adicionado
 depois, se necessário.
 
 Roadmap de mais longo prazo, na ordem recomendada (debate de 2026-09-23; `Period`, dashboard,
 baselines de tendência/platô/anomalia, forecasting baselines e backtesting, Holt, Kalman, GPR, combinação, detectores via Kalman e reconstrução de lacunas já
-feitos) → camada de insights via LLM (feita em 2026-09-24, Gemini gratuito).
+feitos) → camada de insights via LLM (feita em 2026-09-24, Gemini gratuito). Roadmap analítico
+concluído; restam publicação e refinamentos (ver Próximos passos).
 
 ## Convenções de trabalho
 
